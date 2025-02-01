@@ -126,8 +126,8 @@ gpu_mem=128
 #Adding Joystick
 dtoverlay=gpio-key,gpio=25,keycode=103,label="KEY_UP",gpio_pull=2
 dtoverlay=gpio-key,gpio=8,keycode=108,label="KEY_DOWN",gpio_pull=2
-dtoverlay=gpio-key,gpio=7,keycode=105,label="KEY_RIGHT",gpio_pull=2
-dtoverlay=gpio-key,gpio=12,keycode=106,label="KEY_LEFT",gpio_pull=2
+dtoverlay=gpio-key,gpio=7,keycode=105,label="KEY_LEFT",gpio_pull=2
+dtoverlay=gpio-key,gpio=12,keycode=106,label="KEY_RIGHT",gpio_pull=2
 dtoverlay=gpio-key,gpio=16,keycode=29,label="KEY_ENTER",gpio_pull=2
 dtoverlay=gpio-key,gpio=20,keycode=159,label="KEY_BACK",gpio_pull=2
 dtoverlay=gpio-key,gpio=21,keycode=2,label="KEY_RESET",gpio_pull=2
