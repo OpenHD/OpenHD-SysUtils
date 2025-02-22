@@ -25,6 +25,10 @@ if [ -e "$debug_file" ]; then
     echo "sudo journalctl -f" >> /root/.bashrc
 fi
 
+if [ -f "/opt/space.img" ]; then
+ sudo rm -Rf /opt/space.img
+fi
+
 # initialise functions
 if [ -f "/external/openhd/hardware_vtx_v20.txt" ]; then
  sudo bash /usr/local/bin/initX20.sh
