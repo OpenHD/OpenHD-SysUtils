@@ -22,7 +22,7 @@ EOF
 debug_file="/boot/openhd/debug.txt"
 if [ -e "$debug_file" ]; then
     echo "debug mode selected"
-    echo "sudo journalctl -f" >> /root/.bashrc
+    mv /boot/openhd/debug.txt /usr/local/share/openhd/debug.txt
 fi
 
 if [ -f "/opt/space.img" ]; then
