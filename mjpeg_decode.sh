@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Simple decode script for OpenHD (h265)
+# Simple decode script for OpenHD (H265)
 
 function execute_kmsDecodeMPP {
     local plane=$1
