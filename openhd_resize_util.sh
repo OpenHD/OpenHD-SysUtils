@@ -1,4 +1,6 @@
-#resize function
+#!/bin/bash
+
+# resize function
 
 # Specify the UUID of the partition you want to resize
 PARTITION_UUID=$1
