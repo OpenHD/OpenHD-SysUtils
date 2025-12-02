@@ -68,6 +68,7 @@ set_camera_type() {
         44) cam_type="X_CAM_TYPE_RPI_LIBCAMERA_ARDUCAM_IMX327"; cam_link="kms"; cam_ident="imx327"; cma=true ;;
         45) cam_type="X_CAM_TYPE_RPI_LIBCAMERA_ARDUCAM_IMX290"; cam_link="kms"; cam_ident="arducam-pivariety"; cma=true ;;
         46) cam_type="X_CAM_TYPE_RPI_LIBCAMERA_ARDUCAM_IMX462_LOWLIGHT_MINI"; cam_link="kms"; cam_ident="arducam-pivariety"; cma=true ;;
+        47) cam_type="X_CAM_TYPE_RPI_LIBCAMERA_ARDUCAM_IMX662"; cam_link="kms"; cam_ident="imx662"; cma=true ;;
         60) cam_type="X_CAM_TYPE_RPI_V4L2_VEYE_2MP"; cam_link="kms"; cam_ident="veyecam2m-overlay"; cma=false ;;
         61) cam_type="X_CAM_TYPE_RPI_V4L2_VEYE_CSIMX307"; cam_link="kms"; cam_ident="csimx307-overlay"; cma=false ;;
         62) cam_type="X_CAM_TYPE_RPI_V4L2_VEYE_CSSC132"; cam_link="kms"; cam_ident="cssc132-overlay"; cma=false ;;
