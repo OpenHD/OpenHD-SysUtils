@@ -50,7 +50,7 @@ jobs:
           chmod a+x  openhd_sys_utils/etc/xdg/autostart/QOpenHD2.desktop
           fpm -a x86_64 -s dir -t deb -n openhd_sys_utils -v "$VERSION" -C openhd_sys_utils -p openhd_sys_utils_VERSION_ARCH.deb -d "bc"
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ github.event.repository.name }}
           path: |
