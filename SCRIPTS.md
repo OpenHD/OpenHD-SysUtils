@@ -9,7 +9,7 @@ This repository contains helper scripts used by OpenHD system images. Use this d
 - `h264_decode.sh` / `h265_decode.sh`: Sample decode pipelines for receiving OpenHD video over RTP on port 5600 and playing back via GStreamer. The scripts select pipeline variants based on connected hardware (e.g., Rockchip boards) and include helpers for direct framebuffer output.
 - `initPi.sh`: Performs Raspberry Pi specific boot-time setup. Detects kernel version/board, installs overlays, and toggles additional modules and services according to available hardware markers.
 - `initRock.sh`: Adds Rockchip platform identification files and ensures the OpenHD systemd services are enabled when Rockchip markers are present.
-- `initX20.sh`: Initializes the Walksnail Avatar / Caddx Vista (X20) air unit by writing platform markers and enabling temperature monitoring services.
+- `initX20.sh`: Initializes the OpenHD (X20) air unit by writing platform markers and enabling temperature monitoring services.
 - `initX86.sh`: Applies x86-specific tweaks, including handling Steam Deck display rotation and enabling the main `openhd_sys_utils` service.
 - `led.sh` / `led_sys.sh`: Simple LED control helpers that write colored status combinations to `/usr/local/share/openhd/led`. The `_sys` variant reads its inputs from files created by the main system services.
 - `mjpeg_decode.sh`: A misnamed but functional H265 decode helper mirroring the pipelines in the other decode scripts for Rockchip hardware.
