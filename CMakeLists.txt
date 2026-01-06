@@ -28,6 +28,9 @@ add_custom_target(generate_platforms DEPENDS ${GENERATED_PLATFORMS_HEADER})
 
 add_executable(openhd_sys_utils
     src/openhd_sys_utils.cpp
+    src/sysutil_debug.cpp
+    src/sysutil_firstboot.cpp
+    src/sysutil_config.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
     src/sysutil_status.cpp

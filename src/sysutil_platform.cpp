@@ -1,3 +1,26 @@
+/******************************************************************************
+ * OpenHD
+ *
+ * Licensed under the GNU General Public License (GPL) Version 3.
+ *
+ * This software is provided "as-is," without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose, and non-infringement. For details, see the
+ * full license in the LICENSE file provided with this source code.
+ *
+ * Non-Military Use Only:
+ * This software and its associated components are explicitly intended for
+ * civilian and non-military purposes. Use in any military or defense
+ * applications is strictly prohibited unless explicitly and individually
+ * licensed otherwise by the OpenHD Team.
+ *
+ * Contributors:
+ * A full list of contributors can be found at the OpenHD GitHub repository:
+ * https://github.com/OpenHD
+ *
+ * © OpenHD, All Rights Reserved.
+ ******************************************************************************/
+
 #include "sysutil_platform.h"
 
 #include <algorithm>
@@ -11,20 +34,24 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "sysutil_config.h"
 #include "sysutil_protocol.h"
 #include "platforms_generated.h"
 
 namespace sysutil {
 namespace {
 
+// Cached platform information for this process.
 PlatformInfo g_platform_info{};
 bool g_platform_initialized = false;
 
+// Checks for file presence with a non-throwing API.
 bool file_exists(const std::string& path) {
   std::error_code ec;
   return std::filesystem::exists(path, ec);
 }
 
+// Reads a file to string or returns nullopt if unavailable.
 std::optional<std::string> read_file(const std::string& path) {
   std::ifstream file(path);
   if (!file) {
@@ -35,23 +62,27 @@ std::optional<std::string> read_file(const std::string& path) {
   return buffer.str();
 }
 
+// Uppercases a string for case-insensitive comparisons.
 std::string to_upper(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return std::toupper(c); });
   return value;
 }
 
+// Checks for a substring after uppercasing both sides.
 bool contains_after_uppercase(const std::string& haystack,
                               const std::string& needle) {
   return to_upper(haystack).find(to_upper(needle)) != std::string::npos;
 }
 
+// Checks for a substring with case sensitivity.
 bool contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
 }
 
 std::optional<std::string> run_command_out(const char* command);
 
+// Reads a file once and caches its content for reuse.
 const std::optional<std::string>& read_file_cached(
     const char* path,
     std::unordered_map<std::string, std::optional<std::string>>& cache) {
@@ -64,6 +95,7 @@ const std::optional<std::string>& read_file_cached(
   return result.first->second;
 }
 
+// Checks if a regex matches, optionally enforcing capture equality.
 bool regex_matches(const std::string& content,
                    const char* pattern,
                    const char* group_equals,
@@ -86,6 +118,7 @@ bool regex_matches(const std::string& content,
   return true;
 }
 
+// Evaluates a single detection condition against cached data.
 bool condition_matches(
     const DetectionCondition& condition,
     std::unordered_map<std::string, std::optional<std::string>>& cache,
@@ -132,6 +165,7 @@ bool condition_matches(
   return false;
 }
 
+// Runs a command and captures stdout as a single line.
 std::optional<std::string> run_command_out(const char* command) {
   FILE* pipe = popen(command, "r");
   if (!pipe) {
@@ -150,6 +184,7 @@ std::optional<std::string> run_command_out(const char* command) {
   return output;
 }
 
+// Applies detection rules from platforms_generated.h to choose a platform.
 int discover_platform_type() {
   std::cout << "OpenHD Platform Discovery started." << std::endl;
   std::unordered_map<std::string, std::optional<std::string>> file_cache;
@@ -175,6 +210,7 @@ int discover_platform_type() {
   return X_PLATFORM_TYPE_UNKNOWN;
 }
 
+// Writes a small manifest used by other components.
 void write_platform_manifest(const PlatformInfo& info) {
   static constexpr const char* kManifestFile = "/tmp/platform_manifest.txt";
   std::ofstream file(kManifestFile);
@@ -184,6 +220,7 @@ void write_platform_manifest(const PlatformInfo& info) {
   file << "OHDPlatform:[" << info.platform_name << "]";
 }
 
+// Escapes JSON payload content.
 std::string json_escape(const std::string& input) {
   std::string out;
   out.reserve(input.size());
@@ -214,17 +251,50 @@ std::string json_escape(const std::string& input) {
 
 }  // namespace
 
+// Returns a freshly detected platform info snapshot.
+PlatformInfo discover_platform_info() {
+  PlatformInfo info;
+  info.platform_type = discover_platform_type();
+  info.platform_name = platform_type_to_string(info.platform_type);
+  return info;
+}
+
+// Initializes cached platform info from config or discovery.
 void init_platform_info() {
   if (g_platform_initialized) {
     return;
   }
-  g_platform_info.platform_type = discover_platform_type();
-  g_platform_info.platform_name =
-      platform_type_to_string(g_platform_info.platform_type);
+  SysutilConfig config;
+  const auto load_result = load_sysutil_config(config);
+
+  const bool has_cached_platform =
+      (load_result == ConfigLoadResult::Loaded &&
+       config.platform_type.has_value() && config.platform_name.has_value());
+
+  if (load_result == ConfigLoadResult::Loaded && config.platform_type) {
+    g_platform_info.platform_type = *config.platform_type;
+  } else {
+    g_platform_info.platform_type = discover_platform_type();
+  }
+
+  if (load_result == ConfigLoadResult::Loaded && config.platform_name) {
+    g_platform_info.platform_name = *config.platform_name;
+  } else {
+    g_platform_info.platform_name =
+        platform_type_to_string(g_platform_info.platform_type);
+  }
+
+  if (!has_cached_platform && load_result != ConfigLoadResult::Error) {
+    SysutilConfig updated_config = config;
+    updated_config.platform_type = g_platform_info.platform_type;
+    updated_config.platform_name = g_platform_info.platform_name;
+    (void)write_sysutil_config(updated_config);
+  }
   write_platform_manifest(g_platform_info);
   g_platform_initialized = true;
 }
 
+// Returns cached platform info, initializing on first access.
 const PlatformInfo& platform_info() {
   if (!g_platform_initialized) {
     init_platform_info();
@@ -232,11 +302,13 @@ const PlatformInfo& platform_info() {
   return g_platform_info;
 }
 
+// Checks whether a request asks for platform info.
 bool is_platform_request(const std::string& line) {
   auto type = extract_string_field(line, "type");
   return type.has_value() && *type == "sysutil.platform.request";
 }
 
+// Builds JSON response for platform requests.
 std::string build_platform_response() {
   const auto& info = platform_info();
   std::ostringstream out;

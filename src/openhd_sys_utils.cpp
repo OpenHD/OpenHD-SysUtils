@@ -16,6 +16,9 @@
 #include <vector>
 #include <fcntl.h>
 
+#include "sysutil_config.h"
+#include "sysutil_firstboot.h"
+#include "sysutil_debug.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_status.h"
@@ -111,6 +114,17 @@ bool removeStaleSocket() {
     return true;
 }
 
+void remove_space_image() {
+    std::error_code ec;
+    if (!std::filesystem::exists("/opt/space.img", ec)) {
+        return;
+    }
+    if (!std::filesystem::remove("/opt/space.img", ec) || ec) {
+        std::cerr << "Failed to remove /opt/space.img: " << ec.message()
+                  << std::endl;
+    }
+}
+
 int createAndBindSocket() {
     std::error_code ec;
     std::filesystem::create_directories(kSocketDir, ec);
@@ -198,6 +212,9 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                 if (sysutil::is_platform_request(line)) {
                     const auto response = sysutil::build_platform_response();
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_debug_request(line)) {
+                    const auto response = sysutil::build_debug_response();
+                    (void)sendAll(fd, response);
                 } else {
                     sysutil::handle_status_message(line);
                 }
@@ -216,13 +233,27 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    (void)argc;
-    (void)argv;
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        if (arg == "-c") {
+            if (!sysutil::remove_sysutil_config()) {
+                std::cerr << "Failed to remove sysutils config at "
+                          << sysutil::sysutil_config_path() << std::endl;
+                return 1;
+            }
+            std::cout << "Removed sysutils config at "
+                      << sysutil::sysutil_config_path() << std::endl;
+            return 0;
+        }
+    }
 
     if (::geteuid() != 0) {
         std::cerr << "openhd_sys_utils must be run as root." << std::endl;
         return 1;
     }
+
+    remove_space_image();
+    sysutil::run_firstboot_tasks();
 
     // Resizing the root partition if requested (mirrors legacy shell logic).
     // These UUID/partition values come from old openhd_resize_util.sh usage.
@@ -233,6 +264,7 @@ int main(int argc, char* argv[]) {
                                            kDefaultPartitionNumber);
 
     sysutil::init_platform_info();
+    sysutil::init_debug_info();
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {

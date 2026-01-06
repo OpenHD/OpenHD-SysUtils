@@ -21,24 +21,22 @@
  * © OpenHD, All Rights Reserved.
  ******************************************************************************/
 
-#ifndef SYSUTIL_PROTOCOL_H
-#define SYSUTIL_PROTOCOL_H
+#ifndef SYSUTIL_DEBUG_H
+#define SYSUTIL_DEBUG_H
 
-#include <optional>
 #include <string>
 
 namespace sysutil {
 
-// Extracts a string field value from a JSON-like payload.
-std::optional<std::string> extract_string_field(const std::string& line,
-                                                const std::string& field);
-// Extracts an integer field value from a JSON-like payload.
-std::optional<int> extract_int_field(const std::string& line,
-                                     const std::string& field);
-// Extracts a boolean field value from a JSON-like payload.
-std::optional<bool> extract_bool_field(const std::string& line,
-                                       const std::string& field);
+// Initializes debug state by reading config and scanning debug.txt triggers.
+void init_debug_info();
+// Returns whether debug is enabled.
+bool debug_enabled();
+// Tests if the incoming message requests debug state.
+bool is_debug_request(const std::string& line);
+// Builds the debug response JSON payload.
+std::string build_debug_response();
 
 }  // namespace sysutil
 
-#endif  // SYSUTIL_PROTOCOL_H
+#endif  // SYSUTIL_DEBUG_H

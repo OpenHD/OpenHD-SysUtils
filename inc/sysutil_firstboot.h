@@ -21,24 +21,14 @@
  * © OpenHD, All Rights Reserved.
  ******************************************************************************/
 
-#ifndef SYSUTIL_PROTOCOL_H
-#define SYSUTIL_PROTOCOL_H
-
-#include <optional>
-#include <string>
+#ifndef SYSUTIL_FIRSTBOOT_H
+#define SYSUTIL_FIRSTBOOT_H
 
 namespace sysutil {
 
-// Extracts a string field value from a JSON-like payload.
-std::optional<std::string> extract_string_field(const std::string& line,
-                                                const std::string& field);
-// Extracts an integer field value from a JSON-like payload.
-std::optional<int> extract_int_field(const std::string& line,
-                                     const std::string& field);
-// Extracts a boolean field value from a JSON-like payload.
-std::optional<bool> extract_bool_field(const std::string& line,
-                                       const std::string& field);
+// Runs one-time sysutils tasks when firstboot is true or missing.
+void run_firstboot_tasks();
 
 }  // namespace sysutil
 
-#endif  // SYSUTIL_PROTOCOL_H
+#endif  // SYSUTIL_FIRSTBOOT_H

@@ -1,3 +1,26 @@
+/******************************************************************************
+ * OpenHD
+ *
+ * Licensed under the GNU General Public License (GPL) Version 3.
+ *
+ * This software is provided "as-is," without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose, and non-infringement. For details, see the
+ * full license in the LICENSE file provided with this source code.
+ *
+ * Non-Military Use Only:
+ * This software and its associated components are explicitly intended for
+ * civilian and non-military purposes. Use in any military or defense
+ * applications is strictly prohibited unless explicitly and individually
+ * licensed otherwise by the OpenHD Team.
+ *
+ * Contributors:
+ * A full list of contributors can be found at the OpenHD GitHub repository:
+ * https://github.com/OpenHD
+ *
+ * © OpenHD, All Rights Reserved.
+ ******************************************************************************/
+
 #include "sysutil_part.h"
 
 #include <cerrno>
@@ -19,6 +42,7 @@
 namespace sysutil {
 namespace {
 
+// Runs a command and captures stdout.
 std::optional<std::string> run_command(const std::string& command) {
   FILE* pipe = popen(command.c_str(), "r");
   if (!pipe) {
@@ -38,6 +62,7 @@ std::optional<std::string> run_command(const std::string& command) {
   return output;
 }
 
+// Trims whitespace from both ends of a string.
 std::string trim(const std::string& value) {
   const auto begin = value.find_first_not_of(" \t\n\r");
   if (begin == std::string::npos) {
@@ -47,6 +72,7 @@ std::string trim(const std::string& value) {
   return value.substr(begin, end - begin + 1);
 }
 
+// Checks whether a device is already mounted at a mountpoint.
 bool is_already_mounted(const std::string& device,
                         const std::string& mount_point) {
   std::ifstream mounts("/proc/mounts");
@@ -64,6 +90,7 @@ bool is_already_mounted(const std::string& device,
   return false;
 }
 
+// Derives the base device name from a partition device path.
 std::optional<std::string> base_device_for_partition(
     const std::string& partition_device) {
   std::regex re(R"(^(.+?)(p?)(\d+)$)");
@@ -74,6 +101,7 @@ std::optional<std::string> base_device_for_partition(
   return match[1].str();
 }
 
+// Resizes a partition using fdisk in a scripted manner.
 bool run_fdisk_resize(const std::string& base_device, int partition_number) {
   std::ostringstream fdisk_cmd;
   fdisk_cmd << "fdisk " << base_device;
@@ -112,6 +140,7 @@ bool run_fdisk_resize(const std::string& base_device, int partition_number) {
   return true;
 }
 
+// Grows the filesystem with resize2fs.
 bool run_resize2fs(const std::string& device_by_uuid) {
   std::string command = "resize2fs " + device_by_uuid;
   int ret = std::system(command.c_str());
@@ -124,6 +153,7 @@ bool run_resize2fs(const std::string& device_by_uuid) {
 
 }  // namespace
 
+// Lists block device partitions using lsblk output parsing.
 std::vector<PartitionInfo> list_partitions() {
   std::vector<PartitionInfo> result;
   auto output = run_command("lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT");
@@ -157,6 +187,7 @@ std::vector<PartitionInfo> list_partitions() {
   return result;
 }
 
+// Mounts a partition at the requested path, optionally read-only.
 bool mount_partition(const std::string& device,
                      const std::string& mount_point,
                      bool read_only) {
@@ -194,6 +225,7 @@ bool mount_partition(const std::string& device,
   return true;
 }
 
+// Finds the device path for a given UUID.
 std::optional<std::string> find_device_by_uuid(const std::string& uuid) {
   auto output = run_command("blkid -l -o device -t UUID=\"" + uuid + "\"");
   if (!output) {
@@ -206,6 +238,7 @@ std::optional<std::string> find_device_by_uuid(const std::string& uuid) {
   return path;
 }
 
+// Resizes a partition and filesystem for a UUID.
 bool resize_partition(const std::string& uuid, int partition_number) {
   auto device_path_opt = find_device_by_uuid(uuid);
   if (!device_path_opt) {
@@ -250,6 +283,7 @@ bool resize_partition(const std::string& uuid, int partition_number) {
   return true;
 }
 
+// Runs resize only when a request flag file exists.
 bool resize_partition_if_requested(
     const std::string& uuid,
     int partition_number,
