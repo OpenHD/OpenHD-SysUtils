@@ -1,6 +1,7 @@
 #include "sysutil_status.h"
 
 #include <iostream>
+#include <sys/stat.h>
 
 #include "sysutil_protocol.h"
 
@@ -63,6 +64,14 @@ void handle_status_message(const std::string& line) {
   }
 
   std::cout << "OpenHD message: " << line << std::endl;
+}
+
+bool is_regular_file(const std::string& path) {
+  struct stat st {};
+  if (stat(path.c_str(), &st) != 0) {
+    return false;
+  }
+  return S_ISREG(st.st_mode);
 }
 
 }  // namespace sysutil
