@@ -24,14 +24,9 @@ The resulting executable is placed at `build/openhd_sys_utils`. Install it to `/
 
 ### Runtime usage
 
-Run as root:
+Run as root to listen for status updates emitted via `/run/openhd/openhd_sys.sock`:
 
 ```bash
 sudo /usr/local/bin/openhd_sys_utils
 ```
-
-Pass `-hidden` to suppress status output and keep OpenHD running quietly in the background:
-
-```bash
-sudo /usr/local/bin/openhd_sys_utils -hidden
-```
+The utility no longer launches OpenHD itself; start OpenHD separately and use this tool to surface status messages.

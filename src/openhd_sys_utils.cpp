@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <sys/wait.h>
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
@@ -63,12 +62,8 @@ std::optional<int> extractIntField(const std::string& line, const std::string& k
     return static_cast<int>(value);
 }
 
-void processLine(const std::string& line, bool hidden) {
+void processLine(const std::string& line) {
     if (line.empty()) return;
-
-    if (hidden) {
-        return;
-    }
 
     auto state = extractStringField(line, "state");
     auto severity = extractIntField(line, "severity");
@@ -134,29 +129,12 @@ int createAndBindSocket() {
     return serverFd;
 }
 
-pid_t launchOpenHD() {
-    pid_t pid = ::fork();
-    if (pid < 0) {
-        std::perror("fork");
-        return -1;
-    }
-
-    if (pid == 0) {
-        const char* argv[] = {"openhd", "-a", nullptr};
-        ::execvp(argv[0], const_cast<char* const*>(argv));
-        std::perror("execvp");
-        _exit(127);
-    }
-
-    return pid;
-}
-
 void closeClient(int fd, std::unordered_map<int, std::string>& buffers) {
     ::close(fd);
     buffers.erase(fd);
 }
 
-bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers, bool hidden) {
+bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
     char readBuf[1024];
     while (true) {
         ssize_t count = ::read(fd, readBuf, sizeof(readBuf));
@@ -173,7 +151,7 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers, boo
                 if (line.size() > kMaxLineLength) {
                     line = line.substr(0, kMaxLineLength);
                 }
-                processLine(line, hidden);
+                processLine(line);
             }
         } else if (count == 0) {
             return false;
@@ -189,13 +167,8 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers, boo
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    bool hidden = false;
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg(argv[i] ? argv[i] : "");
-        if (arg == "-hidden") {
-            hidden = true;
-        }
-    }
+    (void)argc;
+    (void)argv;
 
     if (::geteuid() != 0) {
         std::cerr << "openhd_sys_utils must be run as root." << std::endl;
@@ -207,41 +180,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    pid_t childPid = launchOpenHD();
-    if (childPid < 0) {
-        ::close(serverFd);
-        return 1;
-    }
-    if (!hidden) {
-        std::cout << "Launched OpenHD with PID " << childPid << std::endl;
-    }
-
     std::unordered_map<int, std::string> clientBuffers;
     std::vector<pollfd> pollFds;
-    bool running = true;
     int exitCode = 0;
 
-    while (running) {
-        int status = 0;
-        pid_t res = ::waitpid(childPid, &status, WNOHANG);
-        if (res == childPid) {
-            if (WIFEXITED(status)) {
-                exitCode = WEXITSTATUS(status);
-                if (!hidden) {
-                    std::cout << "OpenHD exited with code " << exitCode << std::endl;
-                }
-            } else if (WIFSIGNALED(status)) {
-                exitCode = 128 + WTERMSIG(status);
-                if (!hidden) {
-                    std::cout << "OpenHD terminated by signal " << WTERMSIG(status) << std::endl;
-                }
-            }
-            running = false;
-        }
-        if (!running) {
-            break;
-        }
-
+    while (true) {
         pollFds.clear();
         pollFds.push_back({serverFd, POLLIN, 0});
         for (const auto& entry : clientBuffers) {
@@ -254,6 +197,7 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             std::perror("poll");
+            exitCode = 1;
             break;
         }
 
@@ -274,7 +218,7 @@ int main(int argc, char* argv[]) {
                 if (pfd.revents & (POLLERR | POLLHUP)) {
                     closeClient(pfd.fd, clientBuffers);
                 } else if (pfd.revents & POLLIN) {
-                    if (!handleClientData(pfd.fd, clientBuffers, hidden)) {
+                    if (!handleClientData(pfd.fd, clientBuffers)) {
                         closeClient(pfd.fd, clientBuffers);
                     }
                 }
