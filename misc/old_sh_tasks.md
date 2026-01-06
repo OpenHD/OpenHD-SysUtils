@@ -9,14 +9,10 @@ Legend:
 - Migrate x86 image layout by moving /boot/openhd/openhd/* into /boot/openhd (old/openhd_sys_utils.sh). Status: Needed.
 
 ## Boot and platform init orchestration
-- Handle debug mode flag and move debug.txt into share dir (old/openhd_sys_utils.sh). Status: Done.
-- Clean up /opt/space.img on boot (old/openhd_sys_utils.sh). Status: done.
 - Trigger platform-specific init scripts based on flag files (X20, X86, Rock 5, RK3566, RPi) (old/openhd_sys_utils.sh + old/init*.sh). Status: Needed.
 - Enable SSH on Rock 5 boards during init (old/initRock.sh). Status: Needed.
 
 ## Platform detection and manifest
-- Platform detection rules and platform name reporting (C++: src/sysutil_platform.cpp). Status: Done.
-- Write platform manifest file to /tmp/platform_manifest.txt (C++: src/sysutil_platform.cpp). Status: Done.
 - Create platform marker directories/files under /usr/local/share/openhd_platform or /usr/local/share/openhd/platform (old/initX20.sh, old/initRock.sh). Status: Needed.
 
 ## Partition and storage management
