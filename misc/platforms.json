@@ -1,0 +1,189 @@
+{
+  "platforms": [
+    {"key": "X_PLATFORM_TYPE_UNKNOWN", "id": 0, "display": "UNKNOWN"},
+    {"key": "X_PLATFORM_TYPE_X86", "id": 1, "display": "X86"},
+    {"key": "X_PLATFORM_TYPE_RPI_OLD", "id": 10, "display": "RPI<=3"},
+    {"key": "X_PLATFORM_TYPE_RPI_4", "id": 11, "display": "RPI 4"},
+    {"key": "X_PLATFORM_TYPE_RPI_CM4", "id": 12},
+    {"key": "X_PLATFORM_TYPE_RPI_5", "id": 12, "display": "RPI 5"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W", "id": 20, "display": "RADXA ZERO3W"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A", "id": 21, "display": "RADXA RK3588S"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1126", "id": 23, "display": "RV1126"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1106", "id": 25, "display": "RV1106"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1103", "id": 26, "display": "RV1103"},
+    {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27},
+    {"key": "X_PLATFORM_TYPE_ALWINNER_X20", "id": 30, "display": "X20"},
+    {"key": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7S", "id": 31},
+    {"key": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7Z", "id": 32, "display": "A733"},
+    {"key": "X_PLATFORM_TYPE_OPENIPC_SIGMASTAR_UNDEFINED", "id": 36, "display": "OPENIPC SIGMASTAR"},
+    {"key": "X_PLATFORM_TYPE_NVIDIA_XAVIER", "id": 40, "display": "NVIDIA_XAVIER"},
+    {"key": "X_PLATFORM_TYPE_ORQA", "id": 51, "display": "ORQA"},
+    {"key": "X_PLATFORM_TYPE_UVX_MOD", "id": 52, "display": "UVX_MOD"},
+    {"key": "X_PLATFORM_TYPE_QUALCOMM_QRB5165", "id": 46, "display": "QUALCOMM_QRB5165"},
+    {"key": "X_PLATFORM_TYPE_QUALCOMM_QCS405", "id": 47, "display": "QUALCOMM_QCS405"},
+    {"key": "X_PLATFORM_TYPE_NXP_IMX8", "id": 61, "display": "NXP_IMX8"}
+  ],
+  "detections": [
+    {
+      "platform": "X_PLATFORM_TYPE_ORQA",
+      "log": "Detected ORQA platform.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["ORQA"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_UVX_MOD",
+      "log": "Detected UVX Mod platform.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["MX93"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7Z",
+      "log": "Detected Allwinner platform (A733/CUBIE-A7Z).",
+      "conditions": [
+        {"type": "file_exists", "path": "/dev/cedar_dev"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["SUN60IW2", "A733", "CUBIE-A7Z"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ALWINNER_X20",
+      "log": "Detected Allwinner platform (X20).",
+      "conditions": [
+        {"type": "file_exists", "path": "/dev/cedar_dev"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_4",
+      "log": "Raspberry Pi 4 detected.",
+      "conditions": [
+        {"type": "file_exists", "path": "/boot/config.txt"},
+        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["BCM2711"]}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_OLD",
+      "log": "Detected an older Raspberry Pi (<=3).",
+      "conditions": [
+        {"type": "file_exists", "path": "/boot/config.txt"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_OPENIPC_SIGMASTAR_UNDEFINED",
+      "log": "Detected SigmaStar platform.",
+      "conditions": [
+        {"type": "file_exists", "path": "/dev/mstar_ive0"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_NXP_IMX8",
+      "log": "Detected NXP i.MX8 platform.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["IMX8"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A",
+      "log": "Detected Rockchip RK3588 (Radxa ROCK 5A).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3588"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa ROCK 5A"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B",
+      "log": "Detected Rockchip RK3588 (Radxa ROCK 5B).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3588"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3",
+      "log": "Detected Rockchip RK3566 (Radxa CM3).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3566"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa CM3 RPI CM4 IO"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W",
+      "log": "Detected Rockchip RK3566 (Radxa ROCK3 Model A).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3566"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa ROCK3 Model A"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W",
+      "log": "Detected Rockchip RK3566 (default Radxa ZERO3W).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3566"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RV1126",
+      "log": "Detected Rockchip RV1126.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1126"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RV1103",
+      "log": "Detected Rockchip RV1103.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1103"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RV1106",
+      "log": "Detected Rockchip RV1106.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1106"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_LUCKFOX_LYRA",
+      "log": "Detected Luckfox Lyra.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3506"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_UNKNOWN",
+      "log": "No specific Rockchip match found.",
+      "conditions": [
+        {"type": "file_exists", "path": "/proc/device-tree/compatible"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_NVIDIA_XAVIER",
+      "log": "Detected NVIDIA Xavier platform.",
+      "conditions": [
+        {"type": "file_exists", "path": "/proc/device-tree/nvidia,dtsfilename"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_QUALCOMM_QCS405",
+      "log": "Detected Qualcomm QCS405.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/model", "pattern": "(qcs405|qrb5165)", "case_insensitive": true, "group_equals": "qcs405"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_QUALCOMM_QRB5165",
+      "log": "Detected Qualcomm QRB5165.",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/model", "pattern": "(qcs405|qrb5165)", "case_insensitive": true, "group_equals": "qrb5165"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_X86",
+      "log": "Detected x86 platform.",
+      "conditions": [
+        {"type": "arch_regex", "pattern": "x86_64"}
+      ]
+    }
+  ]
+}

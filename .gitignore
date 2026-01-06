@@ -1,1 +1,25 @@
 .idea
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+
+# Build outputs
+openhd_sys_utils
+*.o
+*.a
+*.so
+*.d
+*.obj
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# General
+build/
+out/
+

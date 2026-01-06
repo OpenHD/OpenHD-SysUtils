@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenHD system utilities orchestrator
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/openhd_sys_utils
+
+[Install]
+WantedBy=multi-user.target
