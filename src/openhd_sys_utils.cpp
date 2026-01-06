@@ -3,6 +3,7 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <csignal>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -20,6 +21,48 @@ namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
 constexpr std::string_view kSocketPath = "/run/openhd/openhd_sys.sock";
 constexpr std::size_t kMaxLineLength = 4096;
+volatile std::sig_atomic_t gStopRequested = 0;
+
+void signalHandler(int) {
+    gStopRequested = 1;
+}
+
+bool installSignalHandlers() {
+    struct sigaction sa {};
+    sa.sa_handler = signalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGINT, &sa, nullptr) < 0) {
+        std::perror("sigaction SIGINT");
+        return false;
+    }
+    if (sigaction(SIGTERM, &sa, nullptr) < 0) {
+        std::perror("sigaction SIGTERM");
+        return false;
+    }
+    return true;
+}
+
+class SocketGuard {
+public:
+    SocketGuard() = default;
+    explicit SocketGuard(std::string_view path) : path_(path), active_(true) {}
+    ~SocketGuard() {
+        if (active_) {
+            ::unlink(path_.c_str());
+        }
+    }
+
+    SocketGuard(const SocketGuard&) = delete;
+    SocketGuard& operator=(const SocketGuard&) = delete;
+
+    void disarm() { active_ = false; }
+
+private:
+    std::string path_;
+    bool active_ = false;
+};
 
 bool setNonBlocking(int fd) {
     const int flags = fcntl(fd, F_GETFL, 0);
@@ -134,6 +177,13 @@ void closeClient(int fd, std::unordered_map<int, std::string>& buffers) {
     buffers.erase(fd);
 }
 
+void closeAllClients(std::unordered_map<int, std::string>& buffers) {
+    for (auto& entry : buffers) {
+        ::close(entry.first);
+    }
+    buffers.clear();
+}
+
 bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
     char readBuf[1024];
     while (true) {
@@ -180,11 +230,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    SocketGuard socketGuard(kSocketPath);
+    if (!installSignalHandlers()) {
+        return 1;
+    }
+
     std::unordered_map<int, std::string> clientBuffers;
     std::vector<pollfd> pollFds;
     int exitCode = 0;
 
-    while (true) {
+    while (!gStopRequested) {
         pollFds.clear();
         pollFds.push_back({serverFd, POLLIN, 0});
         for (const auto& entry : clientBuffers) {
@@ -226,10 +281,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    for (auto& entry : clientBuffers) {
-        ::close(entry.first);
-    }
+    closeAllClients(clientBuffers);
     ::close(serverFd);
+    socketGuard.disarm();
     ::unlink(std::string(kSocketPath).c_str());
     return exitCode;
 }
