@@ -63,8 +63,12 @@ std::optional<int> extractIntField(const std::string& line, const std::string& k
     return static_cast<int>(value);
 }
 
-void processLine(const std::string& line) {
+void processLine(const std::string& line, bool hidden) {
     if (line.empty()) return;
+
+    if (hidden) {
+        return;
+    }
 
     auto state = extractStringField(line, "state");
     auto severity = extractIntField(line, "severity");
@@ -144,7 +148,6 @@ pid_t launchOpenHD() {
         _exit(127);
     }
 
-    std::cout << "Launched OpenHD with PID " << pid << std::endl;
     return pid;
 }
 
@@ -153,7 +156,7 @@ void closeClient(int fd, std::unordered_map<int, std::string>& buffers) {
     buffers.erase(fd);
 }
 
-bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
+bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers, bool hidden) {
     char readBuf[1024];
     while (true) {
         ssize_t count = ::read(fd, readBuf, sizeof(readBuf));
@@ -170,7 +173,7 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                 if (line.size() > kMaxLineLength) {
                     line = line.substr(0, kMaxLineLength);
                 }
-                processLine(line);
+                processLine(line, hidden);
             }
         } else if (count == 0) {
             return false;
@@ -185,7 +188,15 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
 }
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    bool hidden = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg(argv[i] ? argv[i] : "");
+        if (arg == "-hidden") {
+            hidden = true;
+        }
+    }
+
     if (::geteuid() != 0) {
         std::cerr << "openhd_sys_utils must be run as root." << std::endl;
         return 1;
@@ -201,6 +212,9 @@ int main() {
         ::close(serverFd);
         return 1;
     }
+    if (!hidden) {
+        std::cout << "Launched OpenHD with PID " << childPid << std::endl;
+    }
 
     std::unordered_map<int, std::string> clientBuffers;
     std::vector<pollfd> pollFds;
@@ -213,10 +227,14 @@ int main() {
         if (res == childPid) {
             if (WIFEXITED(status)) {
                 exitCode = WEXITSTATUS(status);
-                std::cout << "OpenHD exited with code " << exitCode << std::endl;
+                if (!hidden) {
+                    std::cout << "OpenHD exited with code " << exitCode << std::endl;
+                }
             } else if (WIFSIGNALED(status)) {
                 exitCode = 128 + WTERMSIG(status);
-                std::cout << "OpenHD terminated by signal " << WTERMSIG(status) << std::endl;
+                if (!hidden) {
+                    std::cout << "OpenHD terminated by signal " << WTERMSIG(status) << std::endl;
+                }
             }
             running = false;
         }
@@ -256,7 +274,7 @@ int main() {
                 if (pfd.revents & (POLLERR | POLLHUP)) {
                     closeClient(pfd.fd, clientBuffers);
                 } else if (pfd.revents & POLLIN) {
-                    if (!handleClientData(pfd.fd, clientBuffers)) {
+                    if (!handleClientData(pfd.fd, clientBuffers, hidden)) {
                         closeClient(pfd.fd, clientBuffers);
                     }
                 }

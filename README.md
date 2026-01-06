@@ -21,3 +21,17 @@ cmake --build .
 ```
 
 The resulting executable is placed at `build/openhd_sys_utils`. Install it to `/usr/local/bin/openhd_sys_utils` (or another location in `PATH`) so `openhd_sys_utils.service` can launch it.
+
+### Runtime usage
+
+Run as root:
+
+```bash
+sudo /usr/local/bin/openhd_sys_utils
+```
+
+Pass `-hidden` to suppress status output and keep OpenHD running quietly in the background:
+
+```bash
+sudo /usr/local/bin/openhd_sys_utils -hidden
+```
