@@ -524,10 +524,22 @@ std::vector<std::string> list_directory_files(const std::string& path,
   if (!std::filesystem::exists(path, ec)) {
     return files;
   }
+  const std::vector<std::string> allowed_exts = {
+      ".mp4", ".mkv", ".mov", ".avi", ".ts", ".m4v", ".m2ts"};
   for (const auto& entry :
        std::filesystem::directory_iterator(path, ec)) {
     if (ec) {
       break;
+    }
+    if (!entry.is_regular_file(ec)) {
+      continue;
+    }
+    auto ext = entry.path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (std::find(allowed_exts.begin(), allowed_exts.end(), ext) ==
+        allowed_exts.end()) {
+      continue;
     }
     files.push_back(entry.path().filename().string());
     if (files.size() >= limit) {
