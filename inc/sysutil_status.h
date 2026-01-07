@@ -24,15 +24,33 @@
 #ifndef SYSUTIL_STATUS_H
 #define SYSUTIL_STATUS_H
 
+#include <cstdint>
 #include <string>
 
 namespace sysutil {
+
+struct StatusSnapshot {
+  bool has_data = false;
+  bool has_error = false;
+  int severity = 0;
+  std::string state;
+  std::string description;
+  std::string message;
+  std::string type;
+  std::uint64_t updated_ms = 0;
+};
 
 // Handles incoming status messages and logs important state.
 void handle_status_message(const std::string& line);
 
 // Tests if the given path points to an existing regular file.
 bool is_regular_file(const std::string& path);
+
+// Checks whether the message is a status request.
+bool is_status_request(const std::string& line);
+
+// Builds a JSON response that reports the latest status.
+std::string build_status_response();
 
 }  // namespace sysutil
 

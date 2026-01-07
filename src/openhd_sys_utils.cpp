@@ -215,6 +215,9 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                 } else if (sysutil::is_debug_request(line)) {
                     const auto response = sysutil::build_debug_response();
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_status_request(line)) {
+                    const auto response = sysutil::build_status_response();
+                    (void)sendAll(fd, response);
                 } else {
                     sysutil::handle_status_message(line);
                 }
