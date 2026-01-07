@@ -22,6 +22,7 @@
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
+#include "sysutil_settings.h"
 #include "sysutil_status.h"
 
 namespace {
@@ -213,6 +214,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                 if (sysutil::is_platform_request(line)) {
                     const auto response = sysutil::build_platform_response();
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_settings_request(line)) {
+                    const auto response = sysutil::build_settings_response();
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_settings_update(line)) {
+                    const auto response = sysutil::handle_settings_update(line);
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_debug_request(line)) {
                     const auto response = sysutil::build_debug_response();
                     (void)sendAll(fd, response);
@@ -278,6 +285,7 @@ int main(int argc, char* argv[]) {
     remove_space_image();
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
+    sysutil::sync_settings_from_files();
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();

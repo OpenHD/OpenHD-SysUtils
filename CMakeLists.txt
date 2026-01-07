@@ -33,6 +33,7 @@ add_executable(openhd_sys_utils
     src/sysutil_config.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
+    src/sysutil_settings.cpp
     src/sysutil_status.cpp
     src/sysutil_part.cpp
     ${GENERATED_PLATFORMS_HEADER}

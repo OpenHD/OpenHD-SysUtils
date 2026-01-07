@@ -36,6 +36,10 @@ struct SysutilConfig {
   std::optional<std::string> platform_name;
   // Persisted debug flag.
   std::optional<bool> debug_enabled;
+  // Pending OpenHD reset request.
+  std::optional<bool> reset_requested;
+  // Requested boot mode ("air" or "ground").
+  std::optional<std::string> run_mode;
   // First-boot gate for one-time detection tasks.
   std::optional<bool> firstboot;
   // Detected init system (e.g. systemd or init.d).

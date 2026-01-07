@@ -87,6 +87,8 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.platform_type = extract_int_field(content, "platform_type");
   config.platform_name = extract_string_field(content, "platform_name");
   config.debug_enabled = extract_bool_field(content, "debug");
+  config.reset_requested = extract_bool_field(content, "reset_requested");
+  config.run_mode = extract_string_field(content, "run_mode");
   config.firstboot = extract_bool_field(content, "firstboot");
   config.init_system = extract_string_field(content, "init_system");
   config.shell = extract_string_field(content, "shell");
@@ -135,6 +137,21 @@ bool write_sysutil_config(const SysutilConfig& config) {
       file << ",\n";
     }
     file << "  \"debug\": " << (*config.debug_enabled ? "true" : "false");
+    wrote_field = true;
+  }
+  if (config.reset_requested) {
+    if (wrote_field) {
+      file << ",\n";
+    }
+    file << "  \"reset_requested\": "
+         << (*config.reset_requested ? "true" : "false");
+    wrote_field = true;
+  }
+  if (config.run_mode) {
+    if (wrote_field) {
+      file << ",\n";
+    }
+    file << "  \"run_mode\": \"" << json_escape(*config.run_mode) << "\"";
     wrote_field = true;
   }
   if (config.firstboot) {

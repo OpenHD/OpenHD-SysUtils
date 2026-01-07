@@ -16,7 +16,6 @@ Legend:
 - Create platform marker directories/files under /usr/local/share/openhd_platform or /usr/local/share/openhd/platform (old/initX20.sh, old/initRock.sh). Status: Needed.
 
 ## Partition and storage management
-- Resize partition by UUID when resize flag exists (old/openhd_resize_util.sh). Status: Done (C++: src/sysutil_part.cpp + src/openhd_sys_utils.cpp).
 - Platform-specific resize flows with mkfs, mount, fstab updates, external_video_part.txt marker, and reboot (old/initPi.sh, old/initRock.sh, old/initX20.sh, old/initX86.sh). Status: Needed.
 - x86 example service for resizing partitions with a stored UUID (old/x86-core.sh). Status: Needed.
 
