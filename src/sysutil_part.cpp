@@ -125,13 +125,46 @@ struct LsblkRow {
   std::string parent;
 };
 
-std::vector<LsblkRow> read_lsblk_rows() {
-  std::vector<LsblkRow> rows;
-  auto output = run_command(
-      "lsblk -b -P -o NAME,TYPE,SIZE,START,FSTYPE,MOUNTPOINT,PKNAME");
-  if (!output) {
-    return rows;
+std::optional<std::string> run_lsblk_output(
+    const std::vector<std::string>& commands) {
+  for (const auto& command : commands) {
+    auto output = run_command(command);
+    if (output && !trim(*output).empty()) {
+      return output;
+    }
   }
+  return std::nullopt;
+}
+
+struct LsblkResult {
+  std::vector<LsblkRow> rows;
+  bool has_start = false;
+  bool has_parent = false;
+};
+
+std::optional<std::string> base_device_from_name(const std::string& name) {
+  std::regex re(R"(^(.+?)(p?)(\d+)$)");
+  std::smatch match;
+  if (!std::regex_match(name, match, re)) {
+    return std::nullopt;
+  }
+  return match[1].str();
+}
+
+LsblkResult read_lsblk_rows() {
+  LsblkResult result;
+  const std::vector<std::string> commands = {
+      "lsblk -b -P -o NAME,TYPE,SIZE,START,FSTYPE,MOUNTPOINT,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE,START,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE 2>/dev/null"};
+  const auto output = run_lsblk_output(commands);
+  if (!output) {
+    return result;
+  }
+
+  result.has_start = output->find("START=") != std::string::npos;
+  result.has_parent = output->find("PKNAME=") != std::string::npos;
 
   std::istringstream iss(*output);
   std::string line;
@@ -156,10 +189,10 @@ std::vector<LsblkRow> read_lsblk_rows() {
     row.fstype = fields["FSTYPE"];
     row.mountpoint = fields["MOUNTPOINT"];
     row.parent = fields["PKNAME"];
-    rows.push_back(std::move(row));
+    result.rows.push_back(std::move(row));
   }
 
-  return rows;
+  return result;
 }
 
 // Checks whether a device is already mounted at a mountpoint.
@@ -246,7 +279,12 @@ bool run_resize2fs(const std::string& device_by_uuid) {
 // Lists block device partitions using lsblk output parsing.
 std::vector<PartitionInfo> list_partitions() {
   std::vector<PartitionInfo> result;
-  auto output = run_command("lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT,FSTYPE,SIZE");
+  const std::vector<std::string> commands = {
+      "lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT,FSTYPE,SIZE 2>/dev/null",
+      "lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT,SIZE 2>/dev/null",
+      "lsblk -P -o NAME,UUID,TYPE,SIZE 2>/dev/null",
+      "lsblk -P -o NAME,TYPE,SIZE 2>/dev/null"};
+  auto output = run_lsblk_output(commands);
   if (!output) {
     return result;
   }
@@ -398,7 +436,8 @@ bool resize_partition() {
 }
 
 std::string build_partitions_response() {
-  const auto rows = read_lsblk_rows();
+  const auto result = read_lsblk_rows();
+  const auto& rows = result.rows;
   std::ostringstream out;
   out << "{\"type\":\"sysutil.partitions.response\",\"disks\":[";
 
@@ -414,17 +453,41 @@ std::string build_partitions_response() {
 
     std::vector<LsblkRow> parts;
     for (const auto& row : rows) {
-      if (row.type == "part" && row.parent == disk.name) {
-        parts.push_back(row);
+      if (row.type != "part") {
+        continue;
+      }
+      if (result.has_parent) {
+        if (row.parent == disk.name) {
+          parts.push_back(row);
+        }
+      } else {
+        auto base = base_device_from_name(row.name);
+        if (base && *base == disk.name) {
+          parts.push_back(row);
+        }
       }
     }
-    std::sort(parts.begin(), parts.end(),
-              [](const LsblkRow& a, const LsblkRow& b) {
-                return a.start_bytes < b.start_bytes;
-              });
+    if (result.has_start) {
+      std::sort(parts.begin(), parts.end(),
+                [](const LsblkRow& a, const LsblkRow& b) {
+                  return a.start_bytes < b.start_bytes;
+                });
+    } else {
+      std::sort(parts.begin(), parts.end(),
+                [](const LsblkRow& a, const LsblkRow& b) {
+                  return a.name < b.name;
+                });
+      long long cursor = 0;
+      for (auto& part : parts) {
+        part.start_bytes = cursor;
+        cursor += part.size_bytes;
+      }
+    }
 
+    const long long disk_size =
+        disk.size_bytes > 0 ? disk.size_bytes : 0;
     out << "{\"name\":\"/dev/" << json_escape(disk.name) << "\""
-        << ",\"sizeBytes\":" << disk.size_bytes << ",\"segments\":[";
+        << ",\"sizeBytes\":" << disk_size << ",\"segments\":[";
 
     long long cursor = 0;
     bool first_segment = true;
@@ -456,12 +519,12 @@ std::string build_partitions_response() {
       cursor = part.start_bytes + part.size_bytes;
     }
 
-    if (disk.size_bytes > cursor) {
+    if (disk_size > cursor) {
       if (!first_segment) {
         out << ",";
       }
       out << "{\"kind\":\"free\",\"startBytes\":" << cursor
-          << ",\"sizeBytes\":" << (disk.size_bytes - cursor) << "}";
+          << ",\"sizeBytes\":" << (disk_size - cursor) << "}";
     }
 
     out << "],\"partitions\":[";
