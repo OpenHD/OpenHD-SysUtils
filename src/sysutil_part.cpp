@@ -76,6 +76,15 @@ std::string trim(const std::string& value) {
   return value.substr(begin, end - begin + 1);
 }
 
+std::string blkid_value(const std::string& device, const std::string& key) {
+  auto output =
+      run_command("blkid -o value -s " + key + " " + device + " 2>/dev/null");
+  if (!output) {
+    return {};
+  }
+  return trim(*output);
+}
+
 std::string json_escape(const std::string& input) {
   std::string out;
   out.reserve(input.size());
@@ -121,6 +130,7 @@ struct LsblkRow {
   long long size_bytes = 0;
   long long start_bytes = 0;
   std::string fstype;
+  std::string label;
   std::string mountpoint;
   std::string parent;
 };
@@ -154,9 +164,9 @@ std::optional<std::string> base_device_from_name(const std::string& name) {
 LsblkResult read_lsblk_rows() {
   LsblkResult result;
   const std::vector<std::string> commands = {
-      "lsblk -b -P -o NAME,TYPE,SIZE,START,FSTYPE,MOUNTPOINT,PKNAME 2>/dev/null",
-      "lsblk -b -P -o NAME,TYPE,SIZE,START,PKNAME 2>/dev/null",
-      "lsblk -b -P -o NAME,TYPE,SIZE,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE,START,FSTYPE,LABEL,MOUNTPOINT,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE,START,LABEL,PKNAME 2>/dev/null",
+      "lsblk -b -P -o NAME,TYPE,SIZE,LABEL,PKNAME 2>/dev/null",
       "lsblk -b -P -o NAME,TYPE,SIZE 2>/dev/null"};
   const auto output = run_lsblk_output(commands);
   if (!output) {
@@ -187,8 +197,20 @@ LsblkResult read_lsblk_rows() {
     row.size_bytes = parse_ll(fields["SIZE"]);
     row.start_bytes = parse_ll(fields["START"]);
     row.fstype = fields["FSTYPE"];
+    row.label = fields["LABEL"];
     row.mountpoint = fields["MOUNTPOINT"];
     row.parent = fields["PKNAME"];
+
+    if (row.type == "part") {
+      const std::string device = "/dev/" + row.name;
+      if (row.fstype.empty()) {
+        row.fstype = blkid_value(device, "TYPE");
+      }
+      if (row.label.empty()) {
+        row.label = blkid_value(device, "LABEL");
+      }
+    }
+
     result.rows.push_back(std::move(row));
   }
 
@@ -222,6 +244,20 @@ std::optional<std::string> base_device_for_partition(
     return std::nullopt;
   }
   return match[1].str();
+}
+
+std::optional<int> partition_number_from_device(
+    const std::string& partition_device) {
+  std::regex re(R"(^(.+?)(p?)(\d+)$)");
+  std::smatch match;
+  if (!std::regex_match(partition_device, match, re)) {
+    return std::nullopt;
+  }
+  try {
+    return std::stoi(match[3].str());
+  } catch (...) {
+    return std::nullopt;
+  }
 }
 
 // Resizes a partition using fdisk in a scripted manner.
@@ -416,6 +452,33 @@ bool resize_partition_by_uuid(const std::string& uuid, int partition_number) {
   return true;
 }
 
+bool run_fdisk_type_fat32(const std::string& base_device, int partition_number) {
+  std::ostringstream cmd;
+  cmd << "sh -c \"printf 't\\n" << partition_number
+      << "\\n0c\\nw\\n' | fdisk " << base_device << "\"";
+  int ret = std::system(cmd.str().c_str());
+  if (ret != 0) {
+    std::cerr << "fdisk type change failed with code " << ret << std::endl;
+    return false;
+  }
+  return true;
+}
+
+bool run_shell_command(const std::string& command) {
+  int ret = std::system(command.c_str());
+  if (ret != 0) {
+    std::cerr << "Command failed (" << ret << "): " << command << std::endl;
+    return false;
+  }
+  return true;
+}
+
+bool is_fat32(std::string fstype) {
+  std::transform(fstype.begin(), fstype.end(), fstype.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return fstype == "vfat" || fstype == "fat32" || fstype == "fat";
+}
+
 bool resize_partition() {
   set_status("partitioning", "Listing partitions", "Preparing partition tasks.");
   const auto partitions = list_partitions();
@@ -435,9 +498,191 @@ bool resize_partition() {
   return true;
 }
 
+struct ResizeCandidate {
+  std::string disk_name;
+  std::string part_name;
+  std::string device;
+  std::string fstype;
+  std::string label;
+  long long start_bytes = 0;
+  long long size_bytes = 0;
+  long long free_after = 0;
+};
+
+std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) {
+  const auto& rows = result.rows;
+  std::optional<ResizeCandidate> best;
+
+  for (const auto& disk : rows) {
+    if (disk.type != "disk") {
+      continue;
+    }
+    std::vector<LsblkRow> parts;
+    for (const auto& row : rows) {
+      if (row.type != "part") {
+        continue;
+      }
+      if (result.has_parent) {
+        if (row.parent == disk.name) {
+          parts.push_back(row);
+        }
+      } else {
+        auto base = base_device_from_name(row.name);
+        if (base && *base == disk.name) {
+          parts.push_back(row);
+        }
+      }
+    }
+
+    if (parts.empty()) {
+      continue;
+    }
+
+    if (result.has_start) {
+      std::sort(parts.begin(), parts.end(),
+                [](const LsblkRow& a, const LsblkRow& b) {
+                  return a.start_bytes < b.start_bytes;
+                });
+    } else {
+      std::sort(parts.begin(), parts.end(),
+                [](const LsblkRow& a, const LsblkRow& b) {
+                  return a.name < b.name;
+                });
+      long long cursor = 0;
+      for (auto& part : parts) {
+        part.start_bytes = cursor;
+        cursor += part.size_bytes;
+      }
+    }
+
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+      const auto& part = parts[i];
+      const bool is_last = (i + 1 == parts.size());
+      const bool is_unformatted = part.fstype.empty();
+      if (!is_fat32(part.fstype) && !(is_last && is_unformatted)) {
+        continue;
+      }
+      long long end = part.start_bytes + part.size_bytes;
+      long long free_after = 0;
+      if (i + 1 < parts.size()) {
+        free_after = parts[i + 1].start_bytes - end;
+      } else if (disk.size_bytes > 0 && disk.size_bytes > end) {
+        free_after = disk.size_bytes - end;
+      }
+      if (free_after <= 0) {
+        continue;
+      }
+
+      ResizeCandidate candidate;
+      candidate.disk_name = disk.name;
+      candidate.part_name = part.name;
+      candidate.device = "/dev/" + part.name;
+      candidate.fstype = part.fstype;
+      candidate.label = part.label;
+      candidate.start_bytes = part.start_bytes;
+      candidate.size_bytes = part.size_bytes;
+      candidate.free_after = free_after;
+
+      if (!best || candidate.start_bytes > best->start_bytes) {
+        best = std::move(candidate);
+      }
+    }
+  }
+
+  return best;
+}
+
+bool ensure_fstab_entry(const std::string& device, const std::string& mountpoint,
+                        const std::string& fstype) {
+  std::ifstream fstab("/etc/fstab");
+  std::string line;
+  while (std::getline(fstab, line)) {
+    if (line.find(device) != std::string::npos &&
+        line.find(mountpoint) != std::string::npos) {
+      return true;
+    }
+  }
+  std::ofstream out("/etc/fstab", std::ios::app);
+  if (!out) {
+    std::cerr << "Failed to open /etc/fstab for append." << std::endl;
+    return false;
+  }
+  out << device << "  " << mountpoint << "  " << fstype
+      << "  defaults  0  2\n";
+  return true;
+}
+
+bool resize_fat32_partition(const ResizeCandidate& candidate) {
+  const std::string partition_device = candidate.device;
+  auto base_device_opt = base_device_for_partition(partition_device);
+  if (!base_device_opt) {
+    std::cerr << "Unable to determine base device for " << partition_device
+              << std::endl;
+    return false;
+  }
+  auto part_number_opt = partition_number_from_device(partition_device);
+  if (!part_number_opt) {
+    std::cerr << "Unable to determine partition number for "
+              << partition_device << std::endl;
+    return false;
+  }
+
+  const std::string base_device = *base_device_opt;
+  const int part_number = *part_number_opt;
+
+  std::error_code ec;
+  std::filesystem::create_directories("/run/openhd", ec);
+  std::ofstream hold("/run/openhd/hold.pid");
+  hold.close();
+
+  set_status("partitioning", "Formatting", "Preparing FAT32 filesystem.");
+  if (!run_shell_command("mkfs.fat -F 32 " + partition_device)) {
+    return false;
+  }
+
+  set_status("partitioning", "Resizing", "Expanding partition.");
+  std::ostringstream resize_cmd;
+  resize_cmd << "parted " << base_device << " --script resizepart "
+             << part_number << " 100%";
+  if (!run_shell_command(resize_cmd.str())) {
+    return false;
+  }
+
+  set_status("partitioning", "Formatting", "Applying volume label.");
+  if (!run_shell_command("mkfs.vfat -F 32 -n \"RECORDINGS\" " +
+                         partition_device)) {
+    return false;
+  }
+
+  set_status("partitioning", "Updating table", "Setting FAT32 LBA type.");
+  if (!run_fdisk_type_fat32(base_device, part_number)) {
+    return false;
+  }
+
+  set_status("partitioning", "Configuring", "Updating fstab and markers.");
+  std::filesystem::create_directories("/Videos", ec);
+  std::filesystem::create_directories("/tmp/test", ec);
+
+  if (!ensure_fstab_entry(partition_device, "/Videos", "auto")) {
+    return false;
+  }
+
+  if (!mount_partition(partition_device, "/tmp/test", false)) {
+    return false;
+  }
+
+  std::ofstream marker("/tmp/test/external_video_part.txt");
+  marker.close();
+
+  set_status("partitioning", "Complete", "Rebooting after resize.");
+  (void)run_shell_command("reboot");
+  return true;
+}
+
 std::string build_partitions_response() {
   const auto result = read_lsblk_rows();
   const auto& rows = result.rows;
+  const auto candidate = find_resize_candidate(result);
   std::ostringstream out;
   out << "{\"type\":\"sysutil.partitions.response\",\"disks\":[";
 
@@ -513,6 +758,9 @@ std::string build_partitions_response() {
       if (!part.fstype.empty()) {
         out << ",\"fstype\":\"" << json_escape(part.fstype) << "\"";
       }
+      if (!part.label.empty()) {
+        out << ",\"label\":\"" << json_escape(part.label) << "\"";
+      }
       out << ",\"startBytes\":" << part.start_bytes
           << ",\"sizeBytes\":" << part.size_bytes << "}";
 
@@ -541,25 +789,54 @@ std::string build_partitions_response() {
       if (!part.fstype.empty()) {
         out << ",\"fstype\":\"" << json_escape(part.fstype) << "\"";
       }
+      if (!part.label.empty()) {
+        out << ",\"label\":\"" << json_escape(part.label) << "\"";
+      }
       out << ",\"startBytes\":" << part.start_bytes
           << ",\"sizeBytes\":" << part.size_bytes << "}";
     }
     out << "]}";
   }
 
-  out << "]}\n";
+  out << "],\"resizable\":";
+  if (candidate) {
+    out << "{\"device\":\"" << json_escape(candidate->device) << "\"";
+    if (!candidate->label.empty()) {
+      out << ",\"label\":\"" << json_escape(candidate->label) << "\"";
+    }
+    if (!candidate->fstype.empty()) {
+      out << ",\"fstype\":\"" << json_escape(candidate->fstype) << "\"";
+    }
+    out << ",\"freeBytes\":" << candidate->free_after << "}";
+  } else {
+    out << "null";
+  }
+  out << "}\n";
   return out.str();
 }
 
 std::string handle_partition_resize_request(const std::string& choice) {
   const bool wants_resize = (choice == "yes" || choice == "true" ||
                              choice == "1");
-  if (wants_resize) {
-    set_status("partitioning", "Resize requested",
-               "Waiting to perform partitioning.");
-  } else {
+  const auto candidate = find_resize_candidate(read_lsblk_rows());
+  if (!candidate) {
+    set_status("partitioning", "Not resizable",
+               "No FAT32 partition with free space.");
+    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
+  }
+
+  if (!wants_resize) {
     set_status("partitioning", "Resize skipped",
                "Partitioning was not requested.");
+    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":true}\n";
+  }
+
+  set_status("partitioning", "Resize requested",
+             "Preparing to resize FAT32 partition.");
+  if (!resize_fat32_partition(*candidate)) {
+    set_status("partitioning", "Resize failed",
+               "Partition resize did not complete.");
+    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
   }
 
   return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":true}\n";
