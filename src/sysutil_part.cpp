@@ -492,6 +492,22 @@ bool is_label(const std::string& label, const std::string& expected) {
   return to_lower(label) == to_lower(expected);
 }
 
+bool is_mountpoint(const std::string& mountpoint) {
+  std::ifstream mounts("/proc/mounts");
+  std::string line;
+  while (std::getline(mounts, line)) {
+    std::istringstream iss(line);
+    std::string dev, mnt;
+    if (!(iss >> dev >> mnt)) {
+      continue;
+    }
+    if (mnt == mountpoint) {
+      return true;
+    }
+  }
+  return false;
+}
+
 long long filesystem_free_bytes(const std::string& mountpoint) {
   struct statvfs st {};
   if (statvfs(mountpoint.c_str(), &st) != 0) {
@@ -742,6 +758,7 @@ std::string build_partitions_response() {
   const auto& rows = result.rows;
   const auto candidate = find_resize_candidate(result);
   long long recordings_free_bytes = 0;
+  bool recordings_found = false;
   std::vector<std::string> recordings_files;
   std::ostringstream out;
   out << "{\"type\":\"sysutil.partitions.response\",\"disks\":[";
@@ -844,15 +861,15 @@ std::string build_partitions_response() {
       first_part = false;
       const std::string part_device = "/dev/" + part.name;
       long long free_bytes = 0;
-      if (is_label(part.label, "recordings")) {
+      if (is_label(part.label, "recordings") ||
+          part.mountpoint == "/Video") {
         std::string mountpoint =
             part.mountpoint.empty() ? "/Video" : part.mountpoint;
         (void)mount_partition(part_device, mountpoint, false);
         free_bytes = filesystem_free_bytes(mountpoint);
-        if (free_bytes > 0) {
-          recordings_free_bytes = free_bytes;
-          recordings_files = list_directory_files(mountpoint);
-        }
+        recordings_free_bytes = free_bytes;
+        recordings_files = list_directory_files(mountpoint);
+        recordings_found = true;
       }
 
       out << "{\"device\":\"/dev/" << json_escape(part.name) << "\"";
@@ -874,8 +891,14 @@ std::string build_partitions_response() {
     out << "]}";
   }
 
+  if (!recordings_found && is_mountpoint("/Video")) {
+    recordings_free_bytes = filesystem_free_bytes("/Video");
+    recordings_files = list_directory_files("/Video");
+    recordings_found = true;
+  }
+
   out << "],\"recordings\":";
-  if (recordings_free_bytes > 0) {
+  if (recordings_found) {
     out << "{\"freeBytes\":" << recordings_free_bytes << ",\"files\":[";
     for (std::size_t i = 0; i < recordings_files.size(); ++i) {
       if (i > 0) {
