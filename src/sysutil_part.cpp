@@ -501,6 +501,27 @@ long long filesystem_free_bytes(const std::string& mountpoint) {
          static_cast<long long>(st.f_frsize);
 }
 
+std::vector<std::string> list_directory_files(const std::string& path,
+                                              std::size_t limit = 200) {
+  std::vector<std::string> files;
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
+    return files;
+  }
+  for (const auto& entry :
+       std::filesystem::directory_iterator(path, ec)) {
+    if (ec) {
+      break;
+    }
+    files.push_back(entry.path().filename().string());
+    if (files.size() >= limit) {
+      break;
+    }
+  }
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
 bool resize_partition() {
   set_status("partitioning", "Listing partitions", "Preparing partition tasks.");
   const auto partitions = list_partitions();
@@ -720,6 +741,8 @@ std::string build_partitions_response() {
   const auto result = read_lsblk_rows();
   const auto& rows = result.rows;
   const auto candidate = find_resize_candidate(result);
+  long long recordings_free_bytes = 0;
+  std::vector<std::string> recordings_files;
   std::ostringstream out;
   out << "{\"type\":\"sysutil.partitions.response\",\"disks\":[";
 
@@ -822,9 +845,14 @@ std::string build_partitions_response() {
       const std::string part_device = "/dev/" + part.name;
       long long free_bytes = 0;
       if (is_label(part.label, "recordings")) {
-        std::string mountpoint = part.mountpoint.empty() ? "/Video" : part.mountpoint;
+        std::string mountpoint =
+            part.mountpoint.empty() ? "/Video" : part.mountpoint;
         (void)mount_partition(part_device, mountpoint, false);
         free_bytes = filesystem_free_bytes(mountpoint);
+        if (free_bytes > 0) {
+          recordings_free_bytes = free_bytes;
+          recordings_files = list_directory_files(mountpoint);
+        }
       }
 
       out << "{\"device\":\"/dev/" << json_escape(part.name) << "\"";
@@ -846,7 +874,20 @@ std::string build_partitions_response() {
     out << "]}";
   }
 
-  out << "],\"resizable\":";
+  out << "],\"recordings\":";
+  if (recordings_free_bytes > 0) {
+    out << "{\"freeBytes\":" << recordings_free_bytes << ",\"files\":[";
+    for (std::size_t i = 0; i < recordings_files.size(); ++i) {
+      if (i > 0) {
+        out << ",";
+      }
+      out << "\"" << json_escape(recordings_files[i]) << "\"";
+    }
+    out << "]}";
+  } else {
+    out << "null";
+  }
+  out << ",\"resizable\":";
   if (candidate) {
     out << "{\"device\":\"" << json_escape(candidate->device) << "\"";
     if (!candidate->label.empty()) {
