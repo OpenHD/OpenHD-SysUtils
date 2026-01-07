@@ -72,6 +72,9 @@ bool resize_partition_by_uuid(const std::string& uuid, int partition_number);
 // Entry point for partitioning tasks (currently lists partitions only).
 bool resize_partition();
 
+// Mount known OpenHD partitions (RECORDINGS -> /Video, OPENHD -> /Config).
+void mount_known_partitions();
+
 // Builds a JSON response with the current partition layout.
 std::string build_partitions_response();
 

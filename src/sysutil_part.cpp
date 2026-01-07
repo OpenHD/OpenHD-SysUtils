@@ -39,6 +39,7 @@
 #include <string>
 #include <string_view>
 #include <sys/mount.h>
+#include <sys/statvfs.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -473,10 +474,31 @@ bool run_shell_command(const std::string& command) {
   return true;
 }
 
-bool is_fat32(std::string fstype) {
-  std::transform(fstype.begin(), fstype.end(), fstype.begin(),
+std::string to_lower(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
+bool is_fat32(std::string fstype) {
+  fstype = to_lower(std::move(fstype));
   return fstype == "vfat" || fstype == "fat32" || fstype == "fat";
+}
+
+bool is_label(const std::string& label, const std::string& expected) {
+  if (label.empty()) {
+    return false;
+  }
+  return to_lower(label) == to_lower(expected);
+}
+
+long long filesystem_free_bytes(const std::string& mountpoint) {
+  struct statvfs st {};
+  if (statvfs(mountpoint.c_str(), &st) != 0) {
+    return 0;
+  }
+  return static_cast<long long>(st.f_bavail) *
+         static_cast<long long>(st.f_frsize);
 }
 
 bool resize_partition() {
@@ -612,6 +634,21 @@ bool ensure_fstab_entry(const std::string& device, const std::string& mountpoint
   return true;
 }
 
+void mount_known_partitions() {
+  const auto result = read_lsblk_rows();
+  for (const auto& row : result.rows) {
+    if (row.type != "part") {
+      continue;
+    }
+    const std::string device = "/dev/" + row.name;
+    if (is_label(row.label, "recordings")) {
+      (void)mount_partition(device, "/Video", false);
+    } else if (is_label(row.label, "openhd")) {
+      (void)mount_partition(device, "/Config", false);
+    }
+  }
+}
+
 bool resize_fat32_partition(const ResizeCandidate& candidate) {
   const std::string partition_device = candidate.device;
   auto base_device_opt = base_device_for_partition(partition_device);
@@ -660,18 +697,17 @@ bool resize_fat32_partition(const ResizeCandidate& candidate) {
   }
 
   set_status("partitioning", "Configuring", "Updating fstab and markers.");
-  std::filesystem::create_directories("/Videos", ec);
-  std::filesystem::create_directories("/tmp/test", ec);
+  std::filesystem::create_directories("/Video", ec);
 
-  if (!ensure_fstab_entry(partition_device, "/Videos", "auto")) {
+  if (!ensure_fstab_entry(partition_device, "/Video", "auto")) {
     return false;
   }
 
-  if (!mount_partition(partition_device, "/tmp/test", false)) {
+  if (!mount_partition(partition_device, "/Video", false)) {
     return false;
   }
 
-  std::ofstream marker("/tmp/test/external_video_part.txt");
+  std::ofstream marker("/Video/external_video_part.txt");
   marker.close();
 
   set_status("partitioning", "Complete", "Rebooting after resize.");
@@ -782,6 +818,14 @@ std::string build_partitions_response() {
         out << ",";
       }
       first_part = false;
+      const std::string part_device = "/dev/" + part.name;
+      long long free_bytes = 0;
+      if (is_label(part.label, "recordings")) {
+        std::string mountpoint = part.mountpoint.empty() ? "/Video" : part.mountpoint;
+        (void)mount_partition(part_device, mountpoint, false);
+        free_bytes = filesystem_free_bytes(mountpoint);
+      }
+
       out << "{\"device\":\"/dev/" << json_escape(part.name) << "\"";
       if (!part.mountpoint.empty()) {
         out << ",\"mountpoint\":\"" << json_escape(part.mountpoint) << "\"";
@@ -791,6 +835,9 @@ std::string build_partitions_response() {
       }
       if (!part.label.empty()) {
         out << ",\"label\":\"" << json_escape(part.label) << "\"";
+      }
+      if (free_bytes > 0) {
+        out << ",\"freeBytes\":" << free_bytes;
       }
       out << ",\"startBytes\":" << part.start_bytes
           << ",\"sizeBytes\":" << part.size_bytes << "}";

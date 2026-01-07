@@ -277,6 +277,7 @@ int main(int argc, char* argv[]) {
 
     remove_space_image();
     sysutil::run_firstboot_tasks();
+    sysutil::mount_known_partitions();
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();
