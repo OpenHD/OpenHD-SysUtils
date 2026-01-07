@@ -21,6 +21,7 @@
 #include "sysutil_debug.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
+#include "sysutil_protocol.h"
 #include "sysutil_status.h"
 
 namespace {
@@ -217,6 +218,18 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_status_request(line)) {
                     const auto response = sysutil::build_status_response();
+                    (void)sendAll(fd, response);
+                } else if (auto type = sysutil::extract_string_field(line, "type");
+                           type && *type == "sysutil.partitions.request") {
+                    const auto response = sysutil::build_partitions_response();
+                    (void)sendAll(fd, response);
+                } else if (auto type = sysutil::extract_string_field(line, "type");
+                           type && *type == "sysutil.partition.resize.request") {
+                    const auto choice =
+                        sysutil::extract_string_field(line, "choice")
+                            .value_or("no");
+                    const auto response =
+                        sysutil::handle_partition_resize_request(choice);
                     (void)sendAll(fd, response);
                 } else {
                     sysutil::handle_status_message(line);

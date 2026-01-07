@@ -72,6 +72,12 @@ bool resize_partition_by_uuid(const std::string& uuid, int partition_number);
 // Entry point for partitioning tasks (currently lists partitions only).
 bool resize_partition();
 
+// Builds a JSON response with the current partition layout.
+std::string build_partitions_response();
+
+// Handles resize requests (placeholder for future partitioning flows).
+std::string handle_partition_resize_request(const std::string& choice);
+
 }  // namespace sysutil
 
 #endif  // SYSUTIL_PART_H

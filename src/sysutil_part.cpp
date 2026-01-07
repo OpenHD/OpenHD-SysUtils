@@ -25,6 +25,7 @@
 
 #include "sysutil_status.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -32,6 +33,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <map>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -72,6 +74,92 @@ std::string trim(const std::string& value) {
   }
   const auto end = value.find_last_not_of(" \t\n\r");
   return value.substr(begin, end - begin + 1);
+}
+
+std::string json_escape(const std::string& input) {
+  std::string out;
+  out.reserve(input.size());
+  for (char c : input) {
+    switch (c) {
+      case '\\':
+        out += "\\\\";
+        break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        out += c;
+        break;
+    }
+  }
+  return out;
+}
+
+long long parse_ll(const std::string& value) {
+  if (value.empty()) {
+    return 0;
+  }
+  try {
+    return std::stoll(value);
+  } catch (...) {
+    return 0;
+  }
+}
+
+struct LsblkRow {
+  std::string name;
+  std::string type;
+  long long size_bytes = 0;
+  long long start_bytes = 0;
+  std::string fstype;
+  std::string mountpoint;
+  std::string parent;
+};
+
+std::vector<LsblkRow> read_lsblk_rows() {
+  std::vector<LsblkRow> rows;
+  auto output = run_command(
+      "lsblk -b -P -o NAME,TYPE,SIZE,START,FSTYPE,MOUNTPOINT,PKNAME");
+  if (!output) {
+    return rows;
+  }
+
+  std::istringstream iss(*output);
+  std::string line;
+  while (std::getline(iss, line)) {
+    std::map<std::string, std::string> fields;
+    std::regex token_re(R"((\w+)=\"([^\"]*)\")");
+    for (std::sregex_iterator it(line.begin(), line.end(), token_re), end;
+         it != end; ++it) {
+      fields[(*it)[1].str()] = (*it)[2].str();
+    }
+
+    if (fields.find("NAME") == fields.end() ||
+        fields.find("TYPE") == fields.end()) {
+      continue;
+    }
+
+    LsblkRow row;
+    row.name = fields["NAME"];
+    row.type = fields["TYPE"];
+    row.size_bytes = parse_ll(fields["SIZE"]);
+    row.start_bytes = parse_ll(fields["START"]);
+    row.fstype = fields["FSTYPE"];
+    row.mountpoint = fields["MOUNTPOINT"];
+    row.parent = fields["PKNAME"];
+    rows.push_back(std::move(row));
+  }
+
+  return rows;
 }
 
 // Checks whether a device is already mounted at a mountpoint.
@@ -307,6 +395,111 @@ bool resize_partition() {
   }
 
   return true;
+}
+
+std::string build_partitions_response() {
+  const auto rows = read_lsblk_rows();
+  std::ostringstream out;
+  out << "{\"type\":\"sysutil.partitions.response\",\"disks\":[";
+
+  bool first_disk = true;
+  for (const auto& disk : rows) {
+    if (disk.type != "disk") {
+      continue;
+    }
+    if (!first_disk) {
+      out << ",";
+    }
+    first_disk = false;
+
+    std::vector<LsblkRow> parts;
+    for (const auto& row : rows) {
+      if (row.type == "part" && row.parent == disk.name) {
+        parts.push_back(row);
+      }
+    }
+    std::sort(parts.begin(), parts.end(),
+              [](const LsblkRow& a, const LsblkRow& b) {
+                return a.start_bytes < b.start_bytes;
+              });
+
+    out << "{\"name\":\"/dev/" << json_escape(disk.name) << "\""
+        << ",\"sizeBytes\":" << disk.size_bytes << ",\"segments\":[";
+
+    long long cursor = 0;
+    bool first_segment = true;
+    for (const auto& part : parts) {
+      if (part.start_bytes > cursor) {
+        if (!first_segment) {
+          out << ",";
+        }
+        first_segment = false;
+        out << "{\"kind\":\"free\",\"startBytes\":" << cursor
+            << ",\"sizeBytes\":" << (part.start_bytes - cursor) << "}";
+      }
+
+      if (!first_segment) {
+        out << ",";
+      }
+      first_segment = false;
+      out << "{\"kind\":\"partition\",\"device\":\"/dev/"
+          << json_escape(part.name) << "\"";
+      if (!part.mountpoint.empty()) {
+        out << ",\"mountpoint\":\"" << json_escape(part.mountpoint) << "\"";
+      }
+      if (!part.fstype.empty()) {
+        out << ",\"fstype\":\"" << json_escape(part.fstype) << "\"";
+      }
+      out << ",\"startBytes\":" << part.start_bytes
+          << ",\"sizeBytes\":" << part.size_bytes << "}";
+
+      cursor = part.start_bytes + part.size_bytes;
+    }
+
+    if (disk.size_bytes > cursor) {
+      if (!first_segment) {
+        out << ",";
+      }
+      out << "{\"kind\":\"free\",\"startBytes\":" << cursor
+          << ",\"sizeBytes\":" << (disk.size_bytes - cursor) << "}";
+    }
+
+    out << "],\"partitions\":[";
+    bool first_part = true;
+    for (const auto& part : parts) {
+      if (!first_part) {
+        out << ",";
+      }
+      first_part = false;
+      out << "{\"device\":\"/dev/" << json_escape(part.name) << "\"";
+      if (!part.mountpoint.empty()) {
+        out << ",\"mountpoint\":\"" << json_escape(part.mountpoint) << "\"";
+      }
+      if (!part.fstype.empty()) {
+        out << ",\"fstype\":\"" << json_escape(part.fstype) << "\"";
+      }
+      out << ",\"startBytes\":" << part.start_bytes
+          << ",\"sizeBytes\":" << part.size_bytes << "}";
+    }
+    out << "]}";
+  }
+
+  out << "]}\n";
+  return out.str();
+}
+
+std::string handle_partition_resize_request(const std::string& choice) {
+  const bool wants_resize = (choice == "yes" || choice == "true" ||
+                             choice == "1");
+  if (wants_resize) {
+    set_status("partitioning", "Resize requested",
+               "Waiting to perform partitioning.");
+  } else {
+    set_status("partitioning", "Resize skipped",
+               "Partitioning was not requested.");
+  }
+
+  return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":true}\n";
 }
 
 }  // namespace sysutil
