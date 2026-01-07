@@ -23,6 +23,8 @@
 
 #include "sysutil_part.h"
 
+#include "sysutil_status.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -156,7 +158,7 @@ bool run_resize2fs(const std::string& device_by_uuid) {
 // Lists block device partitions using lsblk output parsing.
 std::vector<PartitionInfo> list_partitions() {
   std::vector<PartitionInfo> result;
-  auto output = run_command("lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT");
+  auto output = run_command("lsblk -P -o NAME,UUID,TYPE,MOUNTPOINT,FSTYPE,SIZE");
   if (!output) {
     return result;
   }
@@ -165,7 +167,8 @@ std::vector<PartitionInfo> list_partitions() {
   std::string line;
   while (std::getline(iss, line)) {
     PartitionInfo info;
-    std::regex token_re(R"((NAME|UUID|TYPE|MOUNTPOINT)=\"([^\"]*)\")");
+    std::regex token_re(
+        R"((NAME|UUID|TYPE|MOUNTPOINT|FSTYPE|SIZE)=\"([^\"]*)\")");
     for (std::sregex_iterator it(line.begin(), line.end(), token_re), end;
          it != end; ++it) {
       const std::string key = (*it)[1];
@@ -176,6 +179,10 @@ std::vector<PartitionInfo> list_partitions() {
         info.uuid = value;
       } else if (key == "TYPE") {
         info.type = value;
+      } else if (key == "FSTYPE") {
+        info.fstype = value;
+      } else if (key == "SIZE") {
+        info.size = value;
       } else if (key == "MOUNTPOINT") {
         info.mountpoint = value;
       }
@@ -239,7 +246,7 @@ std::optional<std::string> find_device_by_uuid(const std::string& uuid) {
 }
 
 // Resizes a partition and filesystem for a UUID.
-bool resize_partition(const std::string& uuid, int partition_number) {
+bool resize_partition_by_uuid(const std::string& uuid, int partition_number) {
   auto device_path_opt = find_device_by_uuid(uuid);
   if (!device_path_opt) {
     std::cerr << "Partition with UUID " << uuid << " not found." << std::endl;
@@ -283,31 +290,20 @@ bool resize_partition(const std::string& uuid, int partition_number) {
   return true;
 }
 
-// Runs resize only when a request flag file exists.
-bool resize_partition_if_requested(
-    const std::string& uuid,
-    int partition_number,
-    const std::vector<std::string>& request_files) {
-  bool requested = false;
-  for (const auto& path : request_files) {
-    if (std::filesystem::exists(path)) {
-      requested = true;
-      break;
-    }
-  }
-
-  if (!requested) {
-    std::cout << "Resize not requested. No flag file found." << std::endl;
+bool resize_partition() {
+  set_status("partitioning", "Listing partitions", "Preparing partition tasks.");
+  const auto partitions = list_partitions();
+  if (partitions.empty()) {
+    std::cout << "No partitions found." << std::endl;
     return false;
   }
 
-  if (!resize_partition(uuid, partition_number)) {
-    return false;
-  }
-
-  for (const auto& path : request_files) {
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
+  for (const auto& part : partitions) {
+    std::cout << "Partition: " << part.device
+              << " | Size: " << (part.size.empty() ? "-" : part.size)
+              << " | FSType: " << (part.fstype.empty() ? "-" : part.fstype)
+              << " | Mount: " << (part.mountpoint.empty() ? "-" : part.mountpoint)
+              << std::endl;
   }
 
   return true;

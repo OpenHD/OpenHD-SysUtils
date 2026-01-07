@@ -42,6 +42,10 @@ struct PartitionInfo {
   std::string uuid;
   // TYPE column from lsblk ("part", "disk", etc.)
   std::string type;
+  // Filesystem type reported by lsblk (e.g. ext4, vfat)
+  std::string fstype;
+  // Human-readable size reported by lsblk (e.g. 14.8G)
+  std::string size;
   // Mountpoint if currently mounted, otherwise empty
   std::string mountpoint;
 };
@@ -63,16 +67,10 @@ std::optional<std::string> find_device_by_uuid(const std::string& uuid);
 //  - delete and recreate the partition entry with fdisk
 //  - refresh the kernel partition table with partprobe
 //  - grow the filesystem with resize2fs
-bool resize_partition(const std::string& uuid, int partition_number);
+bool resize_partition_by_uuid(const std::string& uuid, int partition_number);
 
-// Wrapper that only resizes when a request flag file exists. The function
-// checks every path in request_files and only proceeds when at least one is
-// present. After a successful resize, any existing request files are removed.
-bool resize_partition_if_requested(
-    const std::string& uuid,
-    int partition_number,
-    const std::vector<std::string>& request_files = {
-        "/boot/openhd/openhd/resize.txt", "/boot/openhd/resize.txt"});
+// Entry point for partitioning tasks (currently lists partitions only).
+bool resize_partition();
 
 }  // namespace sysutil
 

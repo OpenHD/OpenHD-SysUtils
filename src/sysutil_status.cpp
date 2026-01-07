@@ -210,6 +210,13 @@ std::string build_status_response() {
   return out.str();
 }
 
+void set_status(const std::string& state,
+                const std::string& description,
+                const std::string& message,
+                int severity) {
+  update_status("sysutil.local", state, description, message, severity);
+}
+
 // Returns true when the path exists and points to a regular file.
 bool is_regular_file(const std::string& path) {
   struct stat st {};

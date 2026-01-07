@@ -52,6 +52,12 @@ bool is_status_request(const std::string& line);
 // Builds a JSON response that reports the latest status.
 std::string build_status_response();
 
+// Updates the current status snapshot from sysutils itself.
+void set_status(const std::string& state,
+                const std::string& description = "",
+                const std::string& message = "",
+                int severity = 0);
+
 }  // namespace sysutil
 
 #endif  // SYSUTIL_STATUS_H

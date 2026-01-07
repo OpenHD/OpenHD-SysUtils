@@ -258,14 +258,6 @@ int main(int argc, char* argv[]) {
     remove_space_image();
     sysutil::run_firstboot_tasks();
 
-    // Resizing the root partition if requested (mirrors legacy shell logic).
-    // These UUID/partition values come from old openhd_resize_util.sh usage.
-    // We only trigger when the flag file exists, matching previous behaviour.
-    constexpr const char* kDefaultResizeUuid = "404f7966-7c54-4170-8523-ed6a2a8da9bd";
-    constexpr int kDefaultPartitionNumber = 3;
-    sysutil::resize_partition_if_requested(kDefaultResizeUuid,
-                                           kDefaultPartitionNumber);
-
     sysutil::init_platform_info();
     sysutil::init_debug_info();
 

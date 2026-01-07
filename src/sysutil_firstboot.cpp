@@ -26,6 +26,7 @@
 #include <filesystem>
 
 #include "sysutil_config.h"
+#include "sysutil_part.h"
 #include "sysutil_platform.h"
 
 namespace sysutil {
@@ -90,6 +91,8 @@ void run_firstboot_tasks() {
   if (!should_run) {
     return;
   }
+
+  (void)resize_partition();
 
   const auto info = discover_platform_info();
   config.platform_type = info.platform_type;
