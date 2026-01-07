@@ -248,6 +248,13 @@ int main(int argc, char* argv[]) {
                       << sysutil::sysutil_config_path() << std::endl;
             return 0;
         }
+        if (arg == "-p") {
+            if (!sysutil::resize_partition()) {
+                std::cerr << "Partitioning task failed." << std::endl;
+                return 1;
+            }
+            return 0;
+        }
     }
 
     if (::geteuid() != 0) {
