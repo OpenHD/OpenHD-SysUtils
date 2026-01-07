@@ -200,7 +200,7 @@ def main() -> int:
 
     platforms, detections = load_platforms(Path(args.input))
     header = render_header(platforms, detections)
-    Path(args.output).write_text(header, encoding="utf-8", newline="\n")
+    Path(args.output).write_text(header, encoding="utf-8")
     return 0
 
 
