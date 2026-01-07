@@ -591,7 +591,8 @@ std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) 
       } else if (disk.size_bytes > 0 && disk.size_bytes > end) {
         free_after = disk.size_bytes - end;
       }
-      if (free_after <= 0) {
+      constexpr long long kMinResizeBytes = 1024LL * 1024LL * 1024LL;
+      if (free_after < kMinResizeBytes) {
         continue;
       }
 
