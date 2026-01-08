@@ -1,4 +1,4 @@
-name: build_sysutils_package
+name: build_sysutils_package for Raspberry Pi
 
 on:
   workflow_dispatch:
@@ -14,31 +14,76 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 512
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          overprovision-lvm: 'true'
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake g++ python3
+      - name: Build + Package (Raspberry Pi / Raspbian armhf)
+        uses: pguyot/arm-runner-action@98b8d5a3228f504a8bd54913ab1e23d70f369c6e
+        id: build_image
+        with:
+          base_image: raspios_lite:2023-05-03
+          image_additional_mb: 2000
+          copy_repository_path: /opt
+          copy_artifact_path: build_artifacts
+          import_github_env: true
+          commands: |
+            set -e
 
-      - name: Configure
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+            cd /opt
+            # Repo folder name is the repo name when checked out by actions/checkout
+            # arm-runner copies it into /opt/<repo>
+            REPO_NAME="$(basename "$GITHUB_REPOSITORY")"
+            cd "/opt/$REPO_NAME"
 
-      - name: Build
-        run: |
-          cmake --build build --config ${{ env.BUILD_TYPE }}
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              cmake \
+              g++ \
+              python3 \
+              make \
+              dpkg-dev \
+              fakeroot
 
-      - name: Package
-        run: |
-          cd build
-          cpack -G DEB
+            cmake -S . -B build -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+            cmake --build build --config "${BUILD_TYPE}"
+
+            cd build
+            cpack -G DEB
+
+            # Collect artifacts to the folder that will be copied out
+            mkdir -p /opt/build_artifacts
+            cp -v ./*.deb /opt/build_artifacts/
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: openhd-sys-utils-deb
-          path: build/*.deb
+          path: build_artifacts/*.deb
           if-no-files-found: error
+
+      - name: Push
+        id: push
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "deb"
+          owner: "openhd"
+          repo: "release"
+          distro: "raspbian"
+          release: "bullseye"
+          republish: "true" # needed ONLY if version is not changing
+          file: "build_artifacts/*.deb"
