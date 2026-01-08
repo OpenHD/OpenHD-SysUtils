@@ -45,6 +45,8 @@ constexpr const char* kResetFile = "/Config/openhd/reset.txt";
 constexpr const char* kAirFile = "/Config/openhd/air.txt";
 constexpr const char* kGroundFile = "/Config/openhd/ground.txt";
 constexpr const char* kRecordFile = "/Config/openhd/record.txt";
+constexpr const char* kSettingsJson = "/Config/settings.json";
+constexpr const char* kSettingsJsonSub = "/Config/openhd/settings.json";
 
 bool file_exists(const char* path) {
   std::error_code ec;
@@ -118,6 +120,54 @@ void sync_settings_from_files() {
   }
 
   bool changed = false;
+
+  // Check for settings.json (new format)
+  std::string json_path;
+  if (file_exists(kSettingsJson)) {
+    json_path = kSettingsJson;
+  } else if (file_exists(kSettingsJsonSub)) {
+    json_path = kSettingsJsonSub;
+  }
+
+  if (!json_path.empty()) {
+    std::ifstream file(json_path);
+    if (file) {
+      std::ostringstream buffer;
+      buffer << file.rdbuf();
+      const std::string content = buffer.str();
+
+      // Parse camera (supports int or string)
+      auto cam_int = extract_int_field(content, "camera");
+      if (cam_int) {
+        config.camera_type = *cam_int;
+        changed = true;
+      } else {
+        auto cam_str = extract_string_field(content, "camera");
+        if (cam_str) {
+          try {
+            config.camera_type = std::stoi(*cam_str);
+            changed = true;
+          } catch (...) {
+            // Invalid integer string
+          }
+        }
+      }
+
+      // Parse role
+      auto role = extract_string_field(content, "role");
+      if (role) {
+        const auto mode = normalize_run_mode(*role);
+        if (!mode.empty()) {
+          config.run_mode = mode;
+          changed = true;
+        }
+      }
+
+      // sbc field is currently ignored as platform detection handles it.
+    }
+    remove_file_if_exists(json_path.c_str());
+  }
+
   if (file_exists(kResetFile)) {
     config.reset_requested = true;
     remove_file_if_exists(kResetFile);
