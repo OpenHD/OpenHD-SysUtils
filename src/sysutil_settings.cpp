@@ -30,7 +30,6 @@
 #include <sstream>
 
 #include "sysutil_config.h"
-#include "sysutil_camera.h"
 #include "sysutil_hostname.h"
 #include "sysutil_protocol.h"
 
@@ -190,7 +189,6 @@ std::string handle_settings_update(const std::string& line) {
 
   bool changed = false;
   bool hostname_related_change = false;
-  bool camera_related_change = false;
   if (auto reset_requested = extract_bool_field(line, "reset_requested");
       reset_requested.has_value()) {
     config.reset_requested = *reset_requested;
@@ -201,7 +199,6 @@ std::string handle_settings_update(const std::string& line) {
       camera_type.has_value()) {
     config.camera_type = *camera_type;
     changed = true;
-    camera_related_change = true;
   }
 
   if (auto run_mode_field = extract_string_field(line, "run_mode");
@@ -224,9 +221,6 @@ std::string handle_settings_update(const std::string& line) {
   }
   if (ok && hostname_related_change) {
     apply_hostname_if_enabled();
-  }
-  if (ok && camera_related_change) {
-    apply_camera_config_if_needed();
   }
 
   std::ostringstream out;

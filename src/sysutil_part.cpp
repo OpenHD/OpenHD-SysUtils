@@ -24,6 +24,7 @@
 #include "sysutil_part.h"
 
 #include "sysutil_status.h"
+#include "sysutil_config.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -550,6 +551,20 @@ std::vector<std::string> list_directory_files(const std::string& path,
   return files;
 }
 
+struct ResizeCandidate {
+  std::string disk_name;
+  std::string part_name;
+  std::string device;
+  std::string fstype;
+  std::string label;
+  long long start_bytes = 0;
+  long long size_bytes = 0;
+  long long free_after = 0;
+};
+
+std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result);
+bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot);
+
 bool resize_partition() {
   set_status("partitioning", "Listing partitions", "Preparing partition tasks.");
   const auto partitions = list_partitions();
@@ -569,16 +584,23 @@ bool resize_partition() {
   return true;
 }
 
-struct ResizeCandidate {
-  std::string disk_name;
-  std::string part_name;
-  std::string device;
-  std::string fstype;
-  std::string label;
-  long long start_bytes = 0;
-  long long size_bytes = 0;
-  long long free_after = 0;
-};
+bool resize_partition_firstboot() {
+  set_status("partitioning", "Checking", "Evaluating partition resize.");
+  const auto candidate = find_resize_candidate(read_lsblk_rows());
+  if (!candidate) {
+    set_status("partitioning", "Not resizable",
+               "No FAT32 partition with free space.");
+    return false;
+  }
+  set_status("partitioning", "Resize requested",
+             "Preparing to resize FAT32 partition.");
+  if (!resize_fat32_partition(*candidate, false)) {
+    set_status("partitioning", "Resize failed",
+               "Partition resize did not complete.");
+    return false;
+  }
+  return true;
+}
 
 std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) {
   const auto& rows = result.rows;
@@ -699,7 +721,7 @@ void mount_known_partitions() {
   }
 }
 
-bool resize_fat32_partition(const ResizeCandidate& candidate) {
+bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
   const std::string partition_device = candidate.device;
   auto base_device_opt = base_device_for_partition(partition_device);
   if (!base_device_opt) {
@@ -760,8 +782,10 @@ bool resize_fat32_partition(const ResizeCandidate& candidate) {
   std::ofstream marker("/Video/external_video_part.txt");
   marker.close();
 
-  set_status("partitioning", "Complete", "Rebooting after resize.");
-  (void)run_shell_command("reboot");
+  set_status("partitioning", "Complete", "Partition resize complete.");
+  if (reboot) {
+    (void)run_shell_command("reboot");
+  }
   return true;
 }
 
@@ -942,6 +966,13 @@ std::string build_partitions_response() {
 std::string handle_partition_resize_request(const std::string& choice) {
   const bool wants_resize = (choice == "yes" || choice == "true" ||
                              choice == "1");
+  SysutilConfig config;
+  if (load_sysutil_config(config) == ConfigLoadResult::Loaded &&
+      config.firstboot.has_value() && !config.firstboot.value()) {
+    set_status("partitioning", "Resize skipped",
+               "Partitioning is only available on first boot.");
+    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
+  }
   const auto candidate = find_resize_candidate(read_lsblk_rows());
   if (!candidate) {
     set_status("partitioning", "Not resizable",
@@ -957,7 +988,7 @@ std::string handle_partition_resize_request(const std::string& choice) {
 
   set_status("partitioning", "Resize requested",
              "Preparing to resize FAT32 partition.");
-  if (!resize_fat32_partition(*candidate)) {
+  if (!resize_fat32_partition(*candidate, true)) {
     set_status("partitioning", "Resize failed",
                "Partition resize did not complete.");
     return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";

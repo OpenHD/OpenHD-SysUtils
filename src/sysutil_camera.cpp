@@ -36,6 +36,7 @@
 #include "platforms_generated.h"
 #include "sysutil_config.h"
 #include "sysutil_platform.h"
+#include "sysutil_status.h"
 
 namespace sysutil {
 namespace {
@@ -247,43 +248,42 @@ bool apply_rock_config(const CameraProfile& profile,
 
 }  // namespace
 
-void apply_camera_config_if_needed() {
+bool apply_camera_config_if_needed() {
   SysutilConfig config;
   if (load_sysutil_config(config) == ConfigLoadResult::Error) {
-    return;
+    return false;
   }
   if (!config.camera_type.has_value()) {
-    return;
+    return false;
   }
   const auto profile_opt = find_profile(config.camera_type.value());
   if (!profile_opt.has_value()) {
-    return;
+    return false;
   }
 
   const int platform = platform_info().platform_type;
   const auto& profile = profile_opt.value();
+  bool applied = false;
   if (platform == X_PLATFORM_TYPE_RPI_4 || platform == X_PLATFORM_TYPE_RPI_5) {
-    apply_rpi_config(profile, config.camera_type.value(), true);
-    return;
-  }
-  if (platform == X_PLATFORM_TYPE_RPI_OLD) {
-    apply_rpi_config(profile, config.camera_type.value(), false);
-    return;
-  }
-  if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
-    apply_rock_config(profile, "radxa-zero3-");
-    return;
-  }
-  if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B) {
+    applied = apply_rpi_config(profile, config.camera_type.value(), true);
+  } else if (platform == X_PLATFORM_TYPE_RPI_OLD) {
+    applied = apply_rpi_config(profile, config.camera_type.value(), false);
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
+    applied = apply_rock_config(profile, "radxa-zero3-");
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
+             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B) {
     const auto prefix =
         platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A
             ? "rock-5a-"
             : "rock-5b-";
-    apply_rock_config(profile, prefix);
-    return;
+    applied = apply_rock_config(profile, prefix);
   }
+  if (applied) {
+    set_status("camera_setup", "Camera settings applied",
+               "Camera configuration updated.");
+  }
+  return applied;
 }
 
 }  // namespace sysutil

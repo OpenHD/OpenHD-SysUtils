@@ -27,7 +27,8 @@
 namespace sysutil {
 
 // Applies camera setup based on the configured camera type (if present).
-void apply_camera_config_if_needed();
+// Returns true when a configuration change was applied.
+bool apply_camera_config_if_needed();
 
 }  // namespace sysutil
 

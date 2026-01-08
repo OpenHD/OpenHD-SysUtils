@@ -55,6 +55,7 @@ struct LedPattern {
   LedTarget target = LedTarget::Primary;
   int on_ms = 100;
   int off_ms = 100;
+  int repeat_count = -1;
 };
 
 struct LedDevice {
@@ -74,6 +75,7 @@ std::atomic<bool> g_running{false};
 std::thread g_worker;
 std::mutex g_pattern_mutex;
 LedPattern g_current_pattern{};
+int g_pattern_id = 0;
 
 std::string to_lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
@@ -213,12 +215,15 @@ LedLayout discover_leds() {
 }
 
 LedPattern select_pattern_from_status(const StatusSnapshot& status) {
-  LedPattern error_pattern{LedPatternType::Alternate, LedTarget::Both, 80, 80};
-  LedPattern warn_pattern{LedPatternType::Blink, LedTarget::Secondary, 200, 200};
-  LedPattern starting_pattern{LedPatternType::Blink, LedTarget::Primary, 200, 200};
-  LedPattern ready_pattern{LedPatternType::Solid, LedTarget::Primary, 200, 200};
-  LedPattern stopped_pattern{LedPatternType::Off, LedTarget::Both, 200, 200};
-  LedPattern partition_pattern{LedPatternType::Blink, LedTarget::Both, 120, 120};
+  LedPattern error_pattern{LedPatternType::Alternate, LedTarget::Both, 80, 80, -1};
+  LedPattern warn_pattern{LedPatternType::Blink, LedTarget::Secondary, 200, 200, -1};
+  LedPattern starting_pattern{LedPatternType::Blink, LedTarget::Primary, 200, 200, -1};
+  LedPattern ready_pattern{LedPatternType::Solid, LedTarget::Primary, 200, 200, -1};
+  LedPattern stopped_pattern{LedPatternType::Off, LedTarget::Both, 200, 200, -1};
+  LedPattern partition_pattern{LedPatternType::Blink, LedTarget::Both, 120, 120, -1};
+  LedPattern sysutils_started{LedPatternType::Blink, LedTarget::Both, 120, 120, 3};
+  LedPattern camera_setup{LedPatternType::Blink, LedTarget::Both, 120, 120, 4};
+  LedPattern reboot_initiated{LedPatternType::Blink, LedTarget::Both, 2000, 200, 1};
 
   if (!status.has_data) {
     return stopped_pattern;
@@ -237,6 +242,9 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
   };
   const std::vector<Rule> rules = {
       {"partition", partition_pattern},
+      {"sysutils.started", sysutils_started},
+      {"camera_setup", camera_setup},
+      {"reboot", reboot_initiated},
       {"starting", starting_pattern},
       {"boot", starting_pattern},
       {"ready", ready_pattern},
@@ -255,11 +263,23 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
 }
 
 void worker_loop() {
+  int last_pattern_id = -1;
+  int remaining = -1;
   while (g_running) {
     LedPattern pattern;
+    int pattern_id = 0;
     {
       std::lock_guard<std::mutex> lock(g_pattern_mutex);
       pattern = g_current_pattern;
+      pattern_id = g_pattern_id;
+    }
+    if (pattern_id != last_pattern_id) {
+      last_pattern_id = pattern_id;
+      remaining = pattern.repeat_count;
+    }
+    if (pattern.repeat_count > 0 && remaining == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      continue;
     }
     switch (pattern.type) {
       case LedPatternType::Off:
@@ -276,6 +296,9 @@ void worker_loop() {
       case LedPatternType::Alternate:
         alternate_once(pattern);
         break;
+    }
+    if (pattern.repeat_count > 0 && remaining > 0) {
+      --remaining;
     }
   }
 }
@@ -303,6 +326,7 @@ void update_leds_from_status(const StatusSnapshot& status) {
   const auto next_pattern = select_pattern_from_status(status);
   std::lock_guard<std::mutex> lock(g_pattern_mutex);
   g_current_pattern = next_pattern;
+  ++g_pattern_id;
 }
 
 }  // namespace sysutil

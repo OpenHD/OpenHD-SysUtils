@@ -23,11 +23,14 @@
 
 #include "sysutil_firstboot.h"
 
+#include <cstdlib>
 #include <filesystem>
 
+#include "sysutil_camera.h"
 #include "sysutil_config.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
+#include "sysutil_status.h"
 
 namespace sysutil {
 namespace {
@@ -92,7 +95,13 @@ void run_firstboot_tasks() {
     return;
   }
 
-  (void)resize_partition();
+  bool needs_reboot = false;
+  if (resize_partition_firstboot()) {
+    needs_reboot = true;
+  }
+  if (apply_camera_config_if_needed()) {
+    needs_reboot = true;
+  }
 
   const auto info = discover_platform_info();
   config.platform_type = info.platform_type;
@@ -101,6 +110,12 @@ void run_firstboot_tasks() {
   config.shell = detect_shell();
   config.firstboot = false;
   (void)write_sysutil_config(config);
+
+  if (needs_reboot) {
+    set_status("reboot", "Reboot initiated",
+               "Rebooting after first boot tasks.");
+    std::system("reboot");
+  }
 }
 
 }  // namespace sysutil

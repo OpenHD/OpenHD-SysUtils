@@ -17,7 +17,6 @@
 #include <fcntl.h>
 
 #include "sysutil_config.h"
-#include "sysutil_camera.h"
 #include "sysutil_firstboot.h"
 #include "sysutil_debug.h"
 #include "sysutil_hostname.h"
@@ -314,6 +313,9 @@ int main(int argc, char* argv[]) {
     }
 
     remove_space_image();
+    sysutil::init_leds();
+    sysutil::set_status("sysutils.started", "Sysutils started",
+                        "Waiting for OpenHD requests.");
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
@@ -321,8 +323,6 @@ int main(int argc, char* argv[]) {
     sysutil::init_platform_info();
     sysutil::init_debug_info();
     sysutil::apply_hostname_if_enabled();
-    sysutil::apply_camera_config_if_needed();
-    sysutil::init_leds();
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {

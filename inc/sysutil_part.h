@@ -71,6 +71,8 @@ bool resize_partition_by_uuid(const std::string& uuid, int partition_number);
 
 // Entry point for partitioning tasks (currently lists partitions only).
 bool resize_partition();
+// First-boot partition resize helper. Returns true when a reboot is required.
+bool resize_partition_firstboot();
 
 // Mount known OpenHD partitions (RECORDINGS -> /Video, OPENHD -> /Config).
 void mount_known_partitions();
