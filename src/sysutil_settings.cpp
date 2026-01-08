@@ -35,9 +35,9 @@
 namespace sysutil {
 namespace {
 
-constexpr const char* kResetFile = "/Config/reset.txt";
-constexpr const char* kAirFile = "/Config/air.txt";
-constexpr const char* kGroundFile = "/Config/ground.txt";
+constexpr const char* kResetFile = "/Config/openhd/reset.txt";
+constexpr const char* kAirFile = "/Config/openhd/air.txt";
+constexpr const char* kGroundFile = "/Config/openhd/ground.txt";
 
 bool file_exists(const char* path) {
   std::error_code ec;
