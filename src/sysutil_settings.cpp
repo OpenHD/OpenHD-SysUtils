@@ -44,6 +44,7 @@ namespace {
 constexpr const char* kResetFile = "/Config/openhd/reset.txt";
 constexpr const char* kAirFile = "/Config/openhd/air.txt";
 constexpr const char* kGroundFile = "/Config/openhd/ground.txt";
+constexpr const char* kRecordFile = "/Config/openhd/record.txt";
 
 bool file_exists(const char* path) {
   std::error_code ec;
@@ -60,7 +61,7 @@ void remove_file_if_exists(const char* path) {
 std::string normalize_run_mode(std::string mode) {
   std::transform(mode.begin(), mode.end(), mode.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (mode == "air" || mode == "ground") {
+  if (mode == "air" || mode == "ground" || mode == "record") {
     return mode;
   }
   return "";
@@ -132,10 +133,16 @@ void sync_settings_from_files() {
     remove_file_if_exists("/Config/camera1.txt");
   }
 
+  const bool has_record = file_exists(kRecordFile);
   const bool has_air = file_exists(kAirFile);
   const bool has_ground = file_exists(kGroundFile);
-  if (has_air || has_ground) {
-    config.run_mode = has_air && !has_ground ? "air" : "ground";
+  if (has_record || has_air || has_ground) {
+    if (has_record) {
+      config.run_mode = "record";
+    } else {
+      config.run_mode = has_air && !has_ground ? "air" : "ground";
+    }
+    remove_file_if_exists(kRecordFile);
     remove_file_if_exists(kAirFile);
     remove_file_if_exists(kGroundFile);
     changed = true;
