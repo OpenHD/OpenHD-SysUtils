@@ -55,7 +55,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
 install(TARGETS openhd_sys_utils
-    RUNTIME DESTINATION ../local/bin
+    RUNTIME DESTINATION /usr/local/bin
 )
 
 install(
