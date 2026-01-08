@@ -18,7 +18,7 @@
  * A full list of contributors can be found at the OpenHD GitHub repository:
  * https://github.com/OpenHD
  *
- * ЖИ OpenHD, All Rights Reserved.
+ * © OpenHD, All Rights Reserved.
  ******************************************************************************/
 
 #include "sysutil_settings.h"
