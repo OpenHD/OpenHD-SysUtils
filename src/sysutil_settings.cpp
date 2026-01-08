@@ -256,20 +256,21 @@ std::string handle_camera_setup_request(const std::string& line) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"config write failed\"}\n";
   }
 
-  if (!apply_camera_config_if_needed()) {
-    set_status("camera_setup", "Camera setup failed",
-               "Unable to apply camera configuration.", 2);
-    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"applied\":false}\n";
-  }
-
-  set_status("reboot", "Reboot initiated",
-             "Rebooting after camera setup.");
+  set_status("camera_setup", "Camera setup requested",
+             "Applying camera configuration.");
   std::thread([]() {
+    if (!apply_camera_config_if_needed()) {
+      set_status("camera_setup", "Camera setup failed",
+                 "Unable to apply camera configuration.", 2);
+      return;
+    }
+    set_status("reboot", "Reboot initiated",
+               "Rebooting after camera setup.");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     std::system("reboot");
   }).detach();
 
-  return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":true,\"applied\":true}\n";
+  return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":true,\"applied\":false,\"message\":\"queued\"}\n";
 }
 
 }  // namespace sysutil
