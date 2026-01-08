@@ -48,6 +48,10 @@ target_include_directories(openhd_sys_utils PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
+
 install(TARGETS openhd_sys_utils
     RUNTIME DESTINATION bin
 )
