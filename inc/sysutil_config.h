@@ -36,6 +36,8 @@ struct SysutilConfig {
   std::optional<std::string> platform_name;
   // Persisted debug flag.
   std::optional<bool> debug_enabled;
+  // Enable hostname updates from sysutils.
+  std::optional<bool> set_hostname;
   // Pending OpenHD reset request.
   std::optional<bool> reset_requested;
   // Requested boot mode ("air" or "ground").

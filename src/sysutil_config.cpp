@@ -87,6 +87,7 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.platform_type = extract_int_field(content, "platform_type");
   config.platform_name = extract_string_field(content, "platform_name");
   config.debug_enabled = extract_bool_field(content, "debug");
+  config.set_hostname = extract_bool_field(content, "set_hostname");
   config.reset_requested = extract_bool_field(content, "reset_requested");
   config.run_mode = extract_string_field(content, "run_mode");
   config.firstboot = extract_bool_field(content, "firstboot");
@@ -137,6 +138,14 @@ bool write_sysutil_config(const SysutilConfig& config) {
       file << ",\n";
     }
     file << "  \"debug\": " << (*config.debug_enabled ? "true" : "false");
+    wrote_field = true;
+  }
+  if (config.set_hostname) {
+    if (wrote_field) {
+      file << ",\n";
+    }
+    file << "  \"set_hostname\": "
+         << (*config.set_hostname ? "true" : "false");
     wrote_field = true;
   }
   if (config.reset_requested) {

@@ -19,6 +19,7 @@
 #include "sysutil_config.h"
 #include "sysutil_firstboot.h"
 #include "sysutil_debug.h"
+#include "sysutil_hostname.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
@@ -289,6 +290,7 @@ int main(int argc, char* argv[]) {
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();
+    sysutil::apply_hostname_if_enabled();
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {

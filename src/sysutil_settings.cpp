@@ -29,6 +29,7 @@
 #include <sstream>
 
 #include "sysutil_config.h"
+#include "sysutil_hostname.h"
 #include "sysutil_protocol.h"
 
 namespace sysutil {
@@ -161,6 +162,7 @@ std::string handle_settings_update(const std::string& line) {
   }
 
   bool changed = false;
+  bool hostname_related_change = false;
   if (auto reset_requested = extract_bool_field(line, "reset_requested");
       reset_requested.has_value()) {
     config.reset_requested = *reset_requested;
@@ -173,15 +175,20 @@ std::string handle_settings_update(const std::string& line) {
     if (!normalized.empty()) {
       config.run_mode = normalized;
       changed = true;
+      hostname_related_change = true;
     } else if (*run_mode_field == "unset" || *run_mode_field == "unknown") {
       config.run_mode = std::nullopt;
       changed = true;
+      hostname_related_change = true;
     }
   }
 
   bool ok = true;
   if (changed) {
     ok = write_sysutil_config(config);
+  }
+  if (ok && hostname_related_change) {
+    apply_hostname_if_enabled();
   }
 
   std::ostringstream out;
