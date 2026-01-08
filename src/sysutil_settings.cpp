@@ -25,13 +25,18 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <thread>
 
+#include "sysutil_camera.h"
 #include "sysutil_config.h"
 #include "sysutil_hostname.h"
 #include "sysutil_protocol.h"
+#include "sysutil_status.h"
 
 namespace sysutil {
 namespace {
@@ -151,6 +156,11 @@ bool is_settings_update(const std::string& line) {
   return type.has_value() && *type == "sysutil.settings.update";
 }
 
+bool is_camera_setup_request(const std::string& line) {
+  auto type = extract_string_field(line, "type");
+  return type.has_value() && *type == "sysutil.camera.setup.request";
+}
+
 std::string build_settings_response() {
   SysutilConfig config;
   const auto load_result = load_sysutil_config(config);
@@ -227,6 +237,39 @@ std::string handle_settings_update(const std::string& line) {
   out << "{\"type\":\"sysutil.settings.update.response\",\"ok\":"
       << (ok ? "true" : "false") << "}\n";
   return out.str();
+}
+
+std::string handle_camera_setup_request(const std::string& line) {
+  SysutilConfig config;
+  const auto load_result = load_sysutil_config(config);
+  if (load_result == ConfigLoadResult::Error) {
+    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false}\n";
+  }
+
+  auto camera_type = extract_int_field(line, "camera_type");
+  if (!camera_type.has_value()) {
+    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"missing camera_type\"}\n";
+  }
+
+  config.camera_type = *camera_type;
+  if (!write_sysutil_config(config)) {
+    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"config write failed\"}\n";
+  }
+
+  if (!apply_camera_config_if_needed()) {
+    set_status("camera_setup", "Camera setup failed",
+               "Unable to apply camera configuration.", 2);
+    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"applied\":false}\n";
+  }
+
+  set_status("reboot", "Reboot initiated",
+             "Rebooting after camera setup.");
+  std::thread([]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::system("reboot");
+  }).detach();
+
+  return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":true,\"applied\":true}\n";
 }
 
 }  // namespace sysutil

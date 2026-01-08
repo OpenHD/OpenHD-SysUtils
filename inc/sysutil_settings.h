@@ -35,10 +35,14 @@ void sync_settings_from_files();
 bool is_settings_request(const std::string& line);
 // True when the payload updates sysutils settings.
 bool is_settings_update(const std::string& line);
+// True when the payload requests camera setup.
+bool is_camera_setup_request(const std::string& line);
 // Builds the settings response payload.
 std::string build_settings_response();
 // Applies a settings update and returns a response payload.
 std::string handle_settings_update(const std::string& line);
+// Applies camera setup and returns a response payload.
+std::string handle_camera_setup_request(const std::string& line);
 
 }  // namespace sysutil
 

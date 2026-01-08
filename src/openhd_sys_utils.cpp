@@ -235,6 +235,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_camera_setup_request(line)) {
+                    const auto response = sysutil::handle_camera_setup_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_debug_request(line)) {
                     const auto response = sysutil::build_debug_response();
                     if (gDebug) {
