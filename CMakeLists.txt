@@ -39,6 +39,7 @@ add_executable(openhd_sys_utils
     src/sysutil_settings.cpp
     src/sysutil_status.cpp
     src/sysutil_part.cpp
+    src/sysutil_video.cpp
     ${GENERATED_PLATFORMS_HEADER}
 )
 
