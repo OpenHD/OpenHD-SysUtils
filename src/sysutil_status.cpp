@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 
 #include "sysutil_protocol.h"
+#include "sysutil_led.h"
 
 namespace sysutil {
 namespace {
@@ -86,6 +87,7 @@ void update_status(const std::string& type,
   g_status.updated_ms = now_ms();
   g_status.has_data = true;
   g_status.has_error = compute_has_error(g_status);
+  update_leds_from_status(g_status);
 }
 
 std::string json_escape(const std::string& input) {
@@ -161,6 +163,7 @@ void handle_status_message(const std::string& line) {
     g_status.updated_ms = now_ms();
     g_status.has_data = true;
     g_status.has_error = false;
+    update_leds_from_status(g_status);
     std::cout << "OpenHD state cleared." << std::endl;
     return;
   }

@@ -32,6 +32,7 @@ add_executable(openhd_sys_utils
     src/sysutil_firstboot.cpp
     src/sysutil_config.cpp
     src/sysutil_hostname.cpp
+    src/sysutil_led.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
     src/sysutil_settings.cpp
