@@ -30,6 +30,7 @@ namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
 constexpr std::string_view kSocketPath = "/run/openhd/openhd_sys.sock";
 constexpr std::size_t kMaxLineLength = 4096;
+bool gDebug = false;
 volatile std::sig_atomic_t gStopRequested = 0;
 
 void signalHandler(int) {
@@ -212,24 +213,45 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                 if (line.size() > kMaxLineLength) {
                     line = line.substr(0, kMaxLineLength);
                 }
+                if (gDebug) {
+                    std::cout << "sysutils <= " << line << std::endl;
+                }
                 if (sysutil::is_platform_request(line)) {
                     const auto response = sysutil::build_platform_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_settings_request(line)) {
                     const auto response = sysutil::build_settings_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_settings_update(line)) {
                     const auto response = sysutil::handle_settings_update(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_debug_request(line)) {
                     const auto response = sysutil::build_debug_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_status_request(line)) {
                     const auto response = sysutil::build_status_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (auto type = sysutil::extract_string_field(line, "type");
                            type && *type == "sysutil.partitions.request") {
                     const auto response = sysutil::build_partitions_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else if (auto type = sysutil::extract_string_field(line, "type");
                            type && *type == "sysutil.partition.resize.request") {
@@ -238,6 +260,9 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                             .value_or("no");
                     const auto response =
                         sysutil::handle_partition_resize_request(choice);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
                     (void)sendAll(fd, response);
                 } else {
                     sysutil::handle_status_message(line);
@@ -275,6 +300,9 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             return 0;
+        }
+        if (arg == "-d") {
+            gDebug = true;
         }
     }
 
