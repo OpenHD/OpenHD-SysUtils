@@ -40,6 +40,8 @@ struct SysutilConfig {
   std::optional<bool> set_hostname;
   // Pending OpenHD reset request.
   std::optional<bool> reset_requested;
+  // Selected camera type id.
+  std::optional<int> camera_type;
   // Requested boot mode ("air" or "ground").
   std::optional<std::string> run_mode;
   // First-boot gate for one-time detection tasks.

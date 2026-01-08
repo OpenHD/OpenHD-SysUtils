@@ -1,0 +1,39 @@
+################################################################################
+# OpenHD
+# 
+# Licensed under the GNU General Public License (GPL) Version 3.
+# 
+# This software is provided "as-is," without warranty of any kind, express or 
+# implied, including but not limited to the warranties of merchantability, 
+# fitness for a particular purpose, and non-infringement. For details, see the 
+# full license in the LICENSE file provided with this source code.
+# 
+# Non-Military Use Only:
+# This software and its associated components are explicitly intended for 
+# civilian and non-military purposes. Use in any military or defense 
+# applications is strictly prohibited unless explicitly and individually 
+# licensed otherwise by the OpenHD Team.
+# 
+# Contributors:
+# A full list of contributors can be found at the OpenHD GitHub repository:
+# https://github.com/OpenHD
+# 
+# ЖИ OpenHD, All Rights Reserved.
+################################################################################
+
+[Unit]
+Description=OpenHD system utilities orchestrator
+DefaultDependencies=no
+After=local-fs.target systemd-udev-trigger.service
+Wants=local-fs.target
+Before=basic.target openhd.service openhd_rpi.service openhd_mod.service openhd-x20.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/openhd_sys_utils
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=basic.target

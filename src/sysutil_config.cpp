@@ -89,6 +89,7 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.debug_enabled = extract_bool_field(content, "debug");
   config.set_hostname = extract_bool_field(content, "set_hostname");
   config.reset_requested = extract_bool_field(content, "reset_requested");
+  config.camera_type = extract_int_field(content, "camera_type");
   config.run_mode = extract_string_field(content, "run_mode");
   config.firstboot = extract_bool_field(content, "firstboot");
   config.init_system = extract_string_field(content, "init_system");
@@ -154,6 +155,13 @@ bool write_sysutil_config(const SysutilConfig& config) {
     }
     file << "  \"reset_requested\": "
          << (*config.reset_requested ? "true" : "false");
+    wrote_field = true;
+  }
+  if (config.camera_type) {
+    if (wrote_field) {
+      file << ",\n";
+    }
+    file << "  \"camera_type\": " << *config.camera_type;
     wrote_field = true;
   }
   if (config.run_mode) {

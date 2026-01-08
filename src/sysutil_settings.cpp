@@ -26,9 +26,11 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 
 #include "sysutil_config.h"
+#include "sysutil_camera.h"
 #include "sysutil_hostname.h"
 #include "sysutil_protocol.h"
 
@@ -88,6 +90,19 @@ std::string json_escape(const std::string& input) {
   return out;
 }
 
+std::optional<int> read_int_file(const char* path) {
+  std::ifstream file(path);
+  if (!file) {
+    return std::nullopt;
+  }
+  int value = 0;
+  file >> value;
+  if (!file) {
+    return std::nullopt;
+  }
+  return value;
+}
+
 }  // namespace
 
 void sync_settings_from_files() {
@@ -102,6 +117,15 @@ void sync_settings_from_files() {
     config.reset_requested = true;
     remove_file_if_exists(kResetFile);
     changed = true;
+  }
+
+  if (file_exists("/Config/camera1.txt")) {
+    const auto value = read_int_file("/Config/camera1.txt");
+    if (value.has_value()) {
+      config.camera_type = value;
+      changed = true;
+    }
+    remove_file_if_exists("/Config/camera1.txt");
   }
 
   const bool has_air = file_exists(kAirFile);
@@ -143,11 +167,14 @@ std::string build_settings_response() {
     run_mode = normalize_run_mode(*config.run_mode);
     has_run_mode = !run_mode.empty();
   }
+  const bool has_camera_type = config.camera_type.has_value();
 
   std::ostringstream out;
   out << "{\"type\":\"sysutil.settings.response\",\"ok\":true"
       << ",\"has_reset\":" << (has_reset ? "true" : "false")
       << ",\"reset_requested\":" << (reset_requested ? "true" : "false")
+      << ",\"has_camera_type\":" << (has_camera_type ? "true" : "false")
+      << ",\"camera_type\":" << (has_camera_type ? *config.camera_type : 0)
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
       << ",\"run_mode\":\""
       << json_escape(has_run_mode ? run_mode : "unknown") << "\"}\n";
@@ -163,10 +190,18 @@ std::string handle_settings_update(const std::string& line) {
 
   bool changed = false;
   bool hostname_related_change = false;
+  bool camera_related_change = false;
   if (auto reset_requested = extract_bool_field(line, "reset_requested");
       reset_requested.has_value()) {
     config.reset_requested = *reset_requested;
     changed = true;
+  }
+
+  if (auto camera_type = extract_int_field(line, "camera_type");
+      camera_type.has_value()) {
+    config.camera_type = *camera_type;
+    changed = true;
+    camera_related_change = true;
   }
 
   if (auto run_mode_field = extract_string_field(line, "run_mode");
@@ -189,6 +224,9 @@ std::string handle_settings_update(const std::string& line) {
   }
   if (ok && hostname_related_change) {
     apply_hostname_if_enabled();
+  }
+  if (ok && camera_related_change) {
+    apply_camera_config_if_needed();
   }
 
   std::ostringstream out;

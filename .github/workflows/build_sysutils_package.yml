@@ -1,0 +1,44 @@
+name: build_sysutils_package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "2.7-evo"
+      - "dev-release"
+      - "release"
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ python3
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package
+        run: |
+          cd build
+          cpack -G DEB
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhd-sys-utils-deb
+          path: build/*.deb
+          if-no-files-found: error

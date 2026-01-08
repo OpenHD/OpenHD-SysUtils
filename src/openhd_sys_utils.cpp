@@ -17,6 +17,7 @@
 #include <fcntl.h>
 
 #include "sysutil_config.h"
+#include "sysutil_camera.h"
 #include "sysutil_firstboot.h"
 #include "sysutil_debug.h"
 #include "sysutil_hostname.h"
@@ -320,6 +321,7 @@ int main(int argc, char* argv[]) {
     sysutil::init_platform_info();
     sysutil::init_debug_info();
     sysutil::apply_hostname_if_enabled();
+    sysutil::apply_camera_config_if_needed();
     sysutil::init_leds();
 
     int serverFd = createAndBindSocket();

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(openhd_sys_utils LANGUAGES CXX)
+project(openhd_sys_utils VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +31,7 @@ add_executable(openhd_sys_utils
     src/sysutil_debug.cpp
     src/sysutil_firstboot.cpp
     src/sysutil_config.cpp
+    src/sysutil_camera.cpp
     src/sysutil_hostname.cpp
     src/sysutil_led.cpp
     src/sysutil_protocol.cpp
@@ -53,5 +54,21 @@ find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
 install(TARGETS openhd_sys_utils
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION usr/local/bin
 )
+
+install(
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/systemd/openhd_sys_utils.service
+    DESTINATION lib/systemd/system
+)
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "openhd-sys-utils")
+set(CPACK_PACKAGE_VENDOR "OpenHD")
+set(CPACK_PACKAGE_CONTACT "OpenHD Team")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenHD Team")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+include(CPack)
