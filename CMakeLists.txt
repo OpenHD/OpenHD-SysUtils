@@ -54,12 +54,16 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
+target_compile_definitions(openhd_sys_utils PRIVATE
+    OPENHD_SYS_UTILS_VERSION="${PROJECT_VERSION}"
+)
+
 install(TARGETS openhd_sys_utils
     RUNTIME DESTINATION /usr/local/bin
 )
 
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/systemd/openhd_sys_utils.service
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/systemd/openhd-sys-utils.service
     DESTINATION lib/systemd/system
 )
 
