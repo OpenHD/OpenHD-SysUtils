@@ -243,7 +243,7 @@ std::string build_settings_response() {
       << ",\"camera_type\":" << (has_camera_type ? *config.camera_type : 0)
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
       << ",\"run_mode\":\""
-      << json_escape(has_run_mode ? run_mode : "unknown") << "\"}\n";
+      << json_escape(has_run_mode ? run_mode : "ground") << "\"}\n";
   return out.str();
 }
 
