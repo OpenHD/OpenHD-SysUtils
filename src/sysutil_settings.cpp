@@ -227,11 +227,13 @@ std::string build_settings_response() {
 
   const bool has_reset = config.reset_requested.has_value();
   const bool reset_requested = config.reset_requested.value_or(false);
-  std::string run_mode = "";
-  bool has_run_mode = false;
+  std::string run_mode = "ground";
+  bool has_run_mode = true;
   if (config.run_mode.has_value()) {
-    run_mode = normalize_run_mode(*config.run_mode);
-    has_run_mode = !run_mode.empty();
+    const auto configured_mode = normalize_run_mode(*config.run_mode);
+    if (!configured_mode.empty()) {
+      run_mode = configured_mode;
+    }
   }
   const bool has_camera_type = config.camera_type.has_value();
 
