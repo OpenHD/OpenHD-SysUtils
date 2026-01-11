@@ -311,6 +311,10 @@ int main(int argc, char* argv[]) {
         if (arg == "-d") {
             gDebug = true;
         }
+        if (arg == "-v" || arg == "--version") {
+            std::cout << "OpenHD Sys Utils v" << OPENHD_SYS_UTILS_VERSION << std::endl;
+            return 0;
+        }
     }
 
     if (::geteuid() != 0) {
