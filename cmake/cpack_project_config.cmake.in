@@ -1,0 +1,10 @@
+if(EXISTS "@BUILD_VERSION_FILE@")
+    file(READ "@BUILD_VERSION_FILE@" _openhd_build_ver)
+    string(STRIP "${_openhd_build_ver}" _openhd_build_ver)
+endif()
+
+if(NOT _openhd_build_ver)
+    set(_openhd_build_ver "0")
+endif()
+
+set(CPACK_PACKAGE_VERSION "@PROJECT_VERSION@.${_openhd_build_ver}")

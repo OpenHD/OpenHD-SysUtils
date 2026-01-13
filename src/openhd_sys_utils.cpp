@@ -16,6 +16,7 @@
 #include <vector>
 #include <fcntl.h>
 
+#include "version_generated.h"
 #include "sysutil_config.h"
 #include "sysutil_firstboot.h"
 #include "sysutil_debug.h"

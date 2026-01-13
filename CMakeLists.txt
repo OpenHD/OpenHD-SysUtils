@@ -54,9 +54,22 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
-target_compile_definitions(openhd_sys_utils PRIVATE
-    OPENHD_SYS_UTILS_VERSION="${PROJECT_VERSION}"
+set(BUILD_VERSION_FILE ${CMAKE_CURRENT_BINARY_DIR}/build_version.txt)
+set(GENERATED_VERSION_HEADER ${CMAKE_CURRENT_BINARY_DIR}/version_generated.h)
+
+add_custom_target(update_build_version ALL
+    COMMAND ${CMAKE_COMMAND}
+            -DVERSION_FILE=${BUILD_VERSION_FILE}
+            -DOUTPUT_HEADER=${GENERATED_VERSION_HEADER}
+            -DBASE_VERSION=${PROJECT_VERSION}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/increment_build_version.cmake
+    BYPRODUCTS ${BUILD_VERSION_FILE} ${GENERATED_VERSION_HEADER}
+    COMMENT "Updating build version"
+    VERBATIM
 )
+
+add_dependencies(openhd_sys_utils update_build_version)
+target_sources(openhd_sys_utils PRIVATE ${GENERATED_VERSION_HEADER})
 
 install(TARGETS openhd_sys_utils
     RUNTIME DESTINATION /usr/local/bin
@@ -64,7 +77,7 @@ install(TARGETS openhd_sys_utils
 
 install(
     FILES ${CMAKE_CURRENT_SOURCE_DIR}/systemd/openhd-sys-utils.service
-    DESTINATION lib/systemd/system
+    DESTINATION /lib/systemd/system
 )
 
 set(CPACK_GENERATOR "DEB")
@@ -76,4 +89,10 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/cpack_project_config.cmake)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpack_project_config.cmake.in
+    ${CPACK_PROJECT_CONFIG_FILE}
+    @ONLY
+)
 include(CPack)
