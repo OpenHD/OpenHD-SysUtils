@@ -27,6 +27,7 @@
 #include "sysutil_protocol.h"
 #include "sysutil_settings.h"
 #include "sysutil_status.h"
+#include "sysutil_update.h"
 
 namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
@@ -254,6 +255,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_update_request(line)) {
+                    const auto response = sysutil::handle_update_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (auto type = sysutil::extract_string_field(line, "type");
                            type && *type == "sysutil.partitions.request") {
                     const auto response = sysutil::build_partitions_response();
@@ -330,6 +337,7 @@ int main(int argc, char* argv[]) {
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
+    sysutil::init_update_worker();
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();

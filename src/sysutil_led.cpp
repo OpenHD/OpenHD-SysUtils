@@ -224,6 +224,7 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
   LedPattern sysutils_started{LedPatternType::Blink, LedTarget::Both, 120, 120, 3};
   LedPattern camera_setup{LedPatternType::Blink, LedTarget::Both, 120, 120, 4};
   LedPattern reboot_initiated{LedPatternType::Blink, LedTarget::Both, 2000, 200, 1};
+  LedPattern updating_pattern{LedPatternType::Alternate, LedTarget::Both, 120, 120, -1};
 
   if (!status.has_data) {
     return stopped_pattern;
@@ -242,6 +243,7 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
   };
   const std::vector<Rule> rules = {
       {"partition", partition_pattern},
+      {"update", updating_pattern},
       {"sysutils.started", sysutils_started},
       {"camera_setup", camera_setup},
       {"reboot", reboot_initiated},
