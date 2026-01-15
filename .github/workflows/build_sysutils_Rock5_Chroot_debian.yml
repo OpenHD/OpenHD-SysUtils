@@ -79,7 +79,7 @@ jobs:
           command: "push"
           format: "deb"
           owner: "openhd"
-          repo: ${{ github.ref_name }}
+          repo: dev-release
           distro: "debian"
           release: "bullseye"
           republish: "true"

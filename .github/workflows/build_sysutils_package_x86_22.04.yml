@@ -56,7 +56,7 @@ jobs:
           command: "push"
           format: "deb"
           owner: "openhd"
-          repo: ${{ github.ref_name }}
+          repo: dev-release
           distro: "ubuntu"
           release: "jammy"
           republish: "true"
