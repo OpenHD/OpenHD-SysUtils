@@ -1,0 +1,82 @@
+name: Cross-compile OpenHD SysUtils with Orqa SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk-installer-url:
+        required: false
+  push:
+    branches:
+      - "main"
+      - "dev-release"
+      - "release"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      DOWNLOAD_KEY: ${{ secrets.DOWNLOAD_KEY }}
+      DOWNLOAD_URL: ${{ secrets.DOWNLOAD_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build \
+            pkg-config \
+            autoconf \
+            automake \
+            libtool \
+            curl \
+            xz-utils \
+            zip \
+            cmake \
+            g++ \
+            python3
+
+      - name: Retrieve Orqa SDK installer
+        run: |
+          set -euo pipefail
+          curl -# -u "${DOWNLOAD_KEY}" -O "${DOWNLOAD_URL}"
+          mv SDK-DTK_GCB_working_usb_and_88x2eu.sh OpenHD-SysUtils/SDK-DTK_GCB_working_usb_and_88x2eu.sh
+
+      - name: Install Orqa SDK
+        env:
+          SDK_INSTALL_DIR: ${{ runner.temp }}/orqa-sdk
+        run: |
+          set -euo pipefail
+          mkdir -p "$SDK_INSTALL_DIR"
+          sh OpenHD-SysUtils/SDK-DTK_GCB_working_usb_and_88x2eu.sh -y -d "$SDK_INSTALL_DIR"
+
+      - name: Configure OpenHD SysUtils (Release)
+        env:
+          SDK_INSTALL_DIR: ${{ runner.temp }}/orqa-sdk
+        run: |
+          set -euo pipefail
+          source "$SDK_INSTALL_DIR/environment-setup-armv8a-poky-linux"
+          cmake -S OpenHD-SysUtils -B build-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build OpenHD SysUtils
+        env:
+          SDK_INSTALL_DIR: ${{ runner.temp }}/orqa-sdk
+        run: |
+          set -euo pipefail
+          source "$SDK_INSTALL_DIR/environment-setup-armv8a-poky-linux"
+          cmake --build build-sdk --parallel
+
+      - name: Package cross-compiled binary
+        run: |
+          cd build-sdk
+          cpack -G DEB
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhd-sysutils-aarch64
+          path: build-sdk/*.deb

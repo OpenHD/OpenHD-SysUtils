@@ -1,0 +1,86 @@
+name: build_sysutils_rock5_debian
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "dev-release"
+      - "release"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 512
+          swap-size-mb: 1024
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          overprovision-lvm: "true"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Building OpenHD-SysUtils in CHROOT
+        run: |
+          git clone https://github.com/OpenHD/OpenHD-ChrootCompiler /opt/OpenHD-ChrootCompiler
+          mkdir -p /opt/OpenHD-ChrootCompiler/additionalFiles
+          git clone https://github.com/OpenHD/OpenHD-SysUtils -b ${{ github.ref_name }} /opt/OpenHD-ChrootCompiler/additionalFiles/ --recursive
+          echo $CLOUDSMITH_API_KEY > /opt/OpenHD-ChrootCompiler/additionalFiles/cloudsmith_api_key.txt
+          echo "standard" > /opt/OpenHD-ChrootCompiler/additionalFiles/custom.txt
+          echo "arm64" > /opt/OpenHD-ChrootCompiler/additionalFiles/arch.txt
+          echo "debian" > /opt/OpenHD-ChrootCompiler/additionalFiles/distro.txt
+          echo "bullseye" > /opt/OpenHD-ChrootCompiler/additionalFiles/flavor.txt
+          echo "${{ github.ref_name }}" > /opt/OpenHD-ChrootCompiler/additionalFiles/repo.txt
+          cat << 'EOF' > /opt/OpenHD-ChrootCompiler/additionalFiles/build_chroot.sh
+          #!/bin/bash
+          set -euo pipefail
+          chmod 1777 /tmp || true
+          apt-get update --fix-missing
+          apt-get install -y cmake g++ python3
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+          cd build
+          cpack -G DEB
+          cp *.deb /out/
+          EOF
+          chmod +x /opt/OpenHD-ChrootCompiler/additionalFiles/build_chroot.sh
+
+          cd /opt/OpenHD-ChrootCompiler/
+          sudo apt update
+          sudo bash install_dep.sh
+          sudo bash build.sh rock5b $API_KEY debian bullseye
+
+      - name: Collect artifacts
+        run: |
+          cp -r /opt/OpenHD-ChrootCompiler/out/* .
+
+      - name: Upload to Github
+        uses: "actions/upload-artifact@v4"
+        with:
+          name: "OpenHD-SysUtils"
+          path: |
+            *.deb
+
+      - name: Push
+        if: github.ref_name == 'release' || github.ref_name == 'dev-release'
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "deb"
+          owner: "openhd"
+          repo: ${{ github.ref_name }}
+          distro: "debian"
+          release: "bullseye"
+          republish: "true"
+          file: "*.deb"

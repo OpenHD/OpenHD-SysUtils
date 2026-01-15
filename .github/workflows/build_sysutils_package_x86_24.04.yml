@@ -1,0 +1,63 @@
+name: build_sysutils_package_x86_24.04
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "dev-release"
+      - "release"
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ python3
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package
+        run: |
+          cd build
+          cpack -G DEB
+
+      - name: Upload to Github
+        uses: "actions/upload-artifact@v4"
+        with:
+          name: "OpenHD-SysUtils"
+          path: |
+            build/*.deb
+          if-no-files-found: error
+
+      - name: Push
+        if: github.ref_name == 'release' || github.ref_name == 'dev-release'
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "deb"
+          owner: "openhd"
+          repo: ${{ github.ref_name }}
+          distro: "ubuntu"
+          release: "noble"
+          republish: "true"
+          file: "build/*.deb"

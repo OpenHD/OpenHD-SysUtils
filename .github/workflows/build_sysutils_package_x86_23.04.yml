@@ -1,0 +1,56 @@
+name: build_sysutils_package_x86_23.04
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "dev-release"
+      - "release"
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container:
+      image: docker://ubuntu:lunar
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+    steps:
+      - name: Setup old-releases repositories
+        run: |
+          sed -i 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          sed -i 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          apt-get update
+
+      - name: Install base tooling
+        run: |
+          apt-get install -y git sudo cmake g++ python3 python3-pip
+
+      - name: Clone OpenHD-SysUtils
+        run: |
+          git clone -b ${{ github.ref_name }} https://github.com/OpenHD/OpenHD-SysUtils --recursive
+
+      - name: Build and package
+        run: |
+          cd OpenHD-SysUtils
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+          cmake --build build --config ${BUILD_TYPE}
+          cd build
+          cpack -G DEB
+
+      - name: Upload to Github
+        uses: "actions/upload-artifact@v4"
+        with:
+          name: "OpenHD-SysUtils"
+          path: |
+            OpenHD-SysUtils/build/*.deb
+          if-no-files-found: error
+
+      - name: Push
+        if: github.ref_name == 'release' || github.ref_name == 'dev-release'
+        run: |
+          pip install cloudsmith-cli --break-system-packages
+          cloudsmith push deb -k ${{ secrets.CLOUDSMITH_API_KEY }} openhd/${{ github.ref_name }}/ubuntu/lunar OpenHD-SysUtils/build/*.deb
