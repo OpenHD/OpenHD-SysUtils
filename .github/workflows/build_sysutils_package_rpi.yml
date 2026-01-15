@@ -28,7 +28,7 @@ jobs:
           overprovision-lvm: 'true'
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build + Package (Raspberry Pi / Raspbian armhf)
         uses: pguyot/arm-runner-action@98b8d5a3228f504a8bd54913ab1e23d70f369c6e
