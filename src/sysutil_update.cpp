@@ -88,7 +88,7 @@ bool file_exists(const std::filesystem::path& path) {
   return std::filesystem::exists(path, ec);
 }
 
-bool is_regular_file(const std::filesystem::path& path) {
+bool path_is_regular_file(const std::filesystem::path& path) {
   std::error_code ec;
   return std::filesystem::is_regular_file(path, ec);
 }
@@ -311,7 +311,7 @@ std::optional<UpdateSource> find_update_source() {
       "/usr/local/share/openhd/update.zip"};
 
   for (const auto& zip : zip_candidates) {
-    if (!is_regular_file(zip)) {
+    if (!path_is_regular_file(zip)) {
       continue;
     }
     if (is_recently_modified(zip, kStableSeconds)) {
@@ -510,6 +510,13 @@ bool install_deb_package(const std::filesystem::path& deb_path,
   return true;
 }
 
+struct BinaryUpdate {
+  std::filesystem::path source;
+  std::filesystem::path target;
+};
+
+bool apply_binary_update(const BinaryUpdate& update, std::ofstream& log);
+
 bool apply_deb_updates(const std::vector<std::filesystem::path>& debs,
                        std::ofstream& log) {
   if (debs.empty()) {
@@ -529,16 +536,16 @@ bool apply_deb_updates(const std::vector<std::filesystem::path>& debs,
         log_line(log, "dpkg-deb extract failed for " + deb.string());
         return false;
       }
-      const std::vector<BinaryUpdate> extracted = {
-          {temp_dir / "usr/local/bin/openhd", "/usr/local/bin/openhd"},
-          {temp_dir / "usr/local/bin/QOpenHD", "/usr/local/bin/QOpenHD"},
-          {temp_dir / "usr/local/bin/qopenhd", "/usr/local/bin/QOpenHD"}};
-      for (const auto& item : extracted) {
-        if (is_regular_file(item.source)) {
-          if (!apply_binary_update(item, log)) {
-            return false;
+        const std::vector<BinaryUpdate> extracted = {
+            {temp_dir / "usr/local/bin/openhd", "/usr/local/bin/openhd"},
+            {temp_dir / "usr/local/bin/QOpenHD", "/usr/local/bin/QOpenHD"},
+            {temp_dir / "usr/local/bin/qopenhd", "/usr/local/bin/QOpenHD"}};
+        for (const auto& item : extracted) {
+          if (path_is_regular_file(item.source)) {
+            if (!apply_binary_update(item, log)) {
+              return false;
+            }
           }
-        }
       }
       std::error_code ec;
       std::filesystem::remove_all(temp_dir, ec);
@@ -561,11 +568,6 @@ bool apply_deb_updates(const std::vector<std::filesystem::path>& debs,
   return true;
 }
 
-struct BinaryUpdate {
-  std::filesystem::path source;
-  std::filesystem::path target;
-};
-
 std::vector<BinaryUpdate> find_binary_updates(const std::filesystem::path& base) {
   std::vector<BinaryUpdate> updates;
   const std::filesystem::path bin_dir = base / "binaries";
@@ -577,7 +579,7 @@ std::vector<BinaryUpdate> find_binary_updates(const std::filesystem::path& base)
 
   for (const auto& entry : candidates) {
     const auto source = bin_dir / entry.first;
-    if (is_regular_file(source)) {
+    if (path_is_regular_file(source)) {
       updates.push_back({source, entry.second});
     }
   }
@@ -585,11 +587,11 @@ std::vector<BinaryUpdate> find_binary_updates(const std::filesystem::path& base)
 }
 
 bool apply_binary_update(const BinaryUpdate& update, std::ofstream& log) {
-  if (!is_regular_file(update.source)) {
+  if (!path_is_regular_file(update.source)) {
     return true;
   }
   std::error_code ec;
-  if (is_regular_file(update.target) &&
+  if (path_is_regular_file(update.target) &&
       file_contents_equal(update.source, update.target)) {
     log_line(log, "Binary already matches: " + update.target.string());
     return true;
@@ -600,7 +602,7 @@ bool apply_binary_update(const BinaryUpdate& update, std::ofstream& log) {
   auto backup = update.target;
   backup += ".bak";
 
-  if (is_regular_file(update.target)) {
+  if (path_is_regular_file(update.target)) {
     std::filesystem::copy_file(update.target, backup,
                                std::filesystem::copy_options::overwrite_existing,
                                ec);
@@ -611,11 +613,11 @@ bool apply_binary_update(const BinaryUpdate& update, std::ofstream& log) {
                              ec);
   if (ec) {
     log_line(log, "Failed to copy " + update.source.string());
-    if (is_regular_file(backup)) {
-      std::filesystem::copy_file(backup, update.target,
-                                 std::filesystem::copy_options::overwrite_existing,
-                                 ec);
-    }
+      if (path_is_regular_file(backup)) {
+        std::filesystem::copy_file(backup, update.target,
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
+      }
     return false;
   }
   ::chmod(update.target.string().c_str(), 0755);
