@@ -30,6 +30,7 @@
 #include "sysutil_config.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
+#include "sysutil_settings.h"
 #include "sysutil_status.h"
 
 namespace sysutil {
@@ -99,6 +100,8 @@ void run_firstboot_tasks() {
   if (resize_partition_firstboot()) {
     needs_reboot = true;
   }
+  mount_known_partitions();
+  sync_settings_from_files();
   if (apply_camera_config_if_needed()) {
     needs_reboot = true;
   }

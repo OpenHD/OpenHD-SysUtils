@@ -174,15 +174,6 @@ void sync_settings_from_files() {
     changed = true;
   }
 
-  if (file_exists("/Config/camera1.txt")) {
-    const auto value = read_int_file("/Config/camera1.txt");
-    if (value.has_value()) {
-      config.camera_type = value;
-      changed = true;
-    }
-    remove_file_if_exists("/Config/camera1.txt");
-  }
-
   const bool has_record = file_exists(kRecordFile);
   const bool has_air = file_exists(kAirFile);
   const bool has_ground = file_exists(kGroundFile);
