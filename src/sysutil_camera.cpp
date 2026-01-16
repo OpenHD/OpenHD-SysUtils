@@ -110,6 +110,18 @@ bool copy_file_if_exists(const std::string& from, const std::string& to) {
   return !ec;
 }
 
+std::string select_boot_config_path() {
+  const std::string primary = "/boot/config.txt";
+  if (read_file_exists(primary)) {
+    return primary;
+  }
+  const std::string fallback = "/boot/firmware/config.txt";
+  if (read_file_exists(fallback)) {
+    return fallback;
+  }
+  return primary;
+}
+
 bool run_command(const std::string& command) {
   int ret = std::system(command.c_str());
   if (ret != 0) {
@@ -142,7 +154,7 @@ void apply_rpi_tuning(int cam_id) {
 
 bool update_boot_config(const std::string& dtoverlay_line,
                         const std::string& cam_line) {
-  const std::string path = "/boot/config.txt";
+  const std::string path = select_boot_config_path();
   std::ifstream file(path);
   if (!file) {
     return false;

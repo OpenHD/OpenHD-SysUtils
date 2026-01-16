@@ -102,6 +102,12 @@ void run_firstboot_tasks() {
   }
   mount_known_partitions();
   sync_settings_from_files();
+  {
+    SysutilConfig refreshed;
+    if (load_sysutil_config(refreshed) == ConfigLoadResult::Loaded) {
+      config = refreshed;
+    }
+  }
   if (apply_camera_config_if_needed()) {
     needs_reboot = true;
   }
