@@ -6,20 +6,50 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-find_program(PYTHON_EXECUTABLE NAMES python3 python)
-if(NOT PYTHON_EXECUTABLE)
-    message(FATAL_ERROR "python3 or python is required to generate platform definitions")
-endif()
-
 set(PLATFORMS_JSON ${CMAKE_CURRENT_SOURCE_DIR}/misc/platforms.json)
 set(GENERATED_PLATFORMS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/platforms_generated.h)
 
+# Determine host compiler
+if(CMAKE_CROSSCOMPILING)
+    # If cross-compiling, assume 'c++' is the host compiler if not specified via HOST_CXX.
+    # Users can set HOST_CXX to point to their native compiler.
+    if(DEFINED ENV{HOST_CXX})
+        set(HOST_CXX_COMPILER $ENV{HOST_CXX})
+    else()
+        set(HOST_CXX_COMPILER "c++")
+    endif()
+else()
+    # If native build, use the same compiler.
+    set(HOST_CXX_COMPILER ${CMAKE_CXX_COMPILER})
+endif()
+
+# Handle extension
+if(CMAKE_HOST_WIN32)
+    set(HOST_EXE_SUFFIX ".exe")
+else()
+    set(HOST_EXE_SUFFIX "")
+endif()
+
+set(GEN_PLATFORMS_TOOL ${CMAKE_CURRENT_BINARY_DIR}/gen_platforms_tool${HOST_EXE_SUFFIX})
+
+# Determine host compiler flags
+if(MSVC)
+    set(HOST_CXX_FLAGS "/std:c++17")
+    set(HOST_CXX_OUT_FLAG "/Fe${GEN_PLATFORMS_TOOL}")
+else()
+    set(HOST_CXX_FLAGS "-std=c++17")
+    set(HOST_CXX_OUT_FLAG "-o" "${GEN_PLATFORMS_TOOL}")
+endif()
+
+# Compile the generator tool on the fly using the host compiler.
+# This avoids Python dependency and avoids cross-compilation issues for the tool itself.
 add_custom_command(
     OUTPUT ${GENERATED_PLATFORMS_HEADER}
-    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_platforms.py
+    COMMAND ${HOST_CXX_COMPILER} ${HOST_CXX_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_platforms.cpp ${HOST_CXX_OUT_FLAG}
+    COMMAND ${GEN_PLATFORMS_TOOL}
             --input ${PLATFORMS_JSON}
             --output ${GENERATED_PLATFORMS_HEADER}
-    DEPENDS ${PLATFORMS_JSON} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_platforms.py
+    DEPENDS ${PLATFORMS_JSON} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_platforms.cpp
     COMMENT "Generating platform definitions from JSON"
     VERBATIM
 )
