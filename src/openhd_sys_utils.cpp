@@ -28,6 +28,7 @@
 #include "sysutil_settings.h"
 #include "sysutil_status.h"
 #include "sysutil_update.h"
+#include "sysutil_video.h"
 
 namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
@@ -255,6 +256,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_video_request(line)) {
+                    const auto response = sysutil::handle_video_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_update_request(line)) {
                     const auto response = sysutil::handle_update_request(line);
                     if (gDebug) {
@@ -338,6 +345,7 @@ int main(int argc, char* argv[]) {
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
     sysutil::init_update_worker();
+    sysutil::start_ground_video_if_needed();
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();

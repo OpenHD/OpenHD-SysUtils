@@ -22,13 +22,21 @@
  ******************************************************************************/
 
 #include "sysutil_video.h"
+#include "sysutil_config.h"
 #include "sysutil_platform.h"
+#include "sysutil_protocol.h"
 #include "platforms_generated.h"
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <filesystem>
+#include <chrono>
+#include <thread>
+#include <csignal>
+#include <sys/wait.h>
 
 namespace sysutil {
 namespace {
@@ -42,6 +50,67 @@ bool write_file(const std::string& path, const std::string& content) {
 
 bool run_cmd(const std::string& cmd) {
     return std::system(cmd.c_str()) == 0;
+}
+
+static constexpr const char* kDefaultGroundPipeline =
+    "gst-launch-1.0 udpsrc port=5600 caps='application/x-rtp, media=(string)video, "
+    "clock-rate=(int)90000, encoding-name=(string)H264' ! rtph264depay ! "
+    "'video/x-h264,stream-format=byte-stream' ! fdsink | fpv_video0.bin /dev/stdin";
+
+static pid_t g_video_pid = -1;
+
+bool is_ground_mode() {
+    SysutilConfig config;
+    if (load_sysutil_config(config) != ConfigLoadResult::Loaded) {
+        return false;
+    }
+    if (!config.run_mode.has_value()) {
+        return false;
+    }
+    return config.run_mode.value() == "ground";
+}
+
+bool is_rpi_platform() {
+    const auto& info = platform_info();
+    return info.platform_type == X_PLATFORM_TYPE_RPI_OLD ||
+           info.platform_type == X_PLATFORM_TYPE_RPI_4 ||
+           info.platform_type == X_PLATFORM_TYPE_RPI_CM4 ||
+           info.platform_type == X_PLATFORM_TYPE_RPI_5;
+}
+
+void stop_video_process() {
+    if (g_video_pid <= 0) {
+        return;
+    }
+    ::kill(g_video_pid, SIGTERM);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        int status = 0;
+        const pid_t result = ::waitpid(g_video_pid, &status, WNOHANG);
+        if (result == g_video_pid) {
+            g_video_pid = -1;
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    ::kill(g_video_pid, SIGKILL);
+    ::waitpid(g_video_pid, nullptr, 0);
+    g_video_pid = -1;
+}
+
+bool start_video_process() {
+    stop_video_process();
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        return false;
+    }
+    if (pid == 0) {
+        ::setsid();
+        ::execl("/bin/sh", "sh", "-c", kDefaultGroundPipeline, static_cast<char*>(nullptr));
+        _exit(127);
+    }
+    g_video_pid = pid;
+    return true;
 }
 
 } // namespace
@@ -114,6 +183,53 @@ bool generate_decode_scripts_and_services() {
 
     std::cout << "Generated and enabled openhd-video.service for platform type " << type << std::endl;
     return true;
+}
+
+void start_ground_video_if_needed() {
+    if (!is_ground_mode()) {
+        return;
+    }
+    if (!is_rpi_platform()) {
+        // Not implemented for non-Raspberry Pi platforms yet.
+        std::cout << "Ground video pipeline not implemented for platform type "
+                  << platform_info().platform_type << std::endl;
+        return;
+    }
+    if (!start_video_process()) {
+        std::cerr << "Failed to start ground video pipeline." << std::endl;
+    }
+}
+
+bool is_video_request(const std::string& line) {
+    auto type = extract_string_field(line, "type");
+    return type.has_value() && *type == "sysutil.video.request";
+}
+
+std::string handle_video_request(const std::string& line) {
+    auto action = extract_string_field(line, "action").value_or("start");
+    bool ok = true;
+    if (!is_ground_mode()) {
+        ok = false;
+    } else if (!is_rpi_platform()) {
+        // Not implemented for non-Raspberry Pi platforms yet.
+        std::cerr << "Ground video request ignored for platform type "
+                  << platform_info().platform_type << std::endl;
+        ok = false;
+    } else if (action == "start" || action == "restart") {
+        ok = start_video_process();
+    } else if (action == "stop") {
+        stop_video_process();
+        ok = true;
+    } else {
+        ok = false;
+    }
+
+    std::ostringstream out;
+    out << "{\"type\":\"sysutil.video.response\",\"ok\":"
+        << (ok ? "true" : "false")
+        << ",\"action\":\"" << action
+        << "\",\"pipeline\":\"ground_default\"}\n";
+    return out.str();
 }
 
 } // namespace sysutil
