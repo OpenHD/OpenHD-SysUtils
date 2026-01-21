@@ -1,6 +1,8 @@
 #ifndef SYSUTIL_VIDEO_H
 #define SYSUTIL_VIDEO_H
 
+#include <string>
+
 namespace sysutil {
 
 // Generates the decode script and systemd service file based on the detected platform.

@@ -36,6 +36,7 @@
 #include <chrono>
 #include <thread>
 #include <csignal>
+#include <unistd.h>
 #include <sys/wait.h>
 
 namespace sysutil {
