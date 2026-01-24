@@ -345,6 +345,7 @@ int main(int argc, char* argv[]) {
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
     sysutil::init_update_worker();
+    sysutil::start_openhd_services_if_needed();
     sysutil::start_ground_video_if_needed();
 
     sysutil::init_platform_info();

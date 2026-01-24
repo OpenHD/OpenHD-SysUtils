@@ -25,11 +25,14 @@
 #include "sysutil_config.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
+#include "sysutil_status.h"
 #include "platforms_generated.h"
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <cctype>
 #include <cstdlib>
 #include <sys/stat.h>
 #include <filesystem>
@@ -49,8 +52,49 @@ bool write_file(const std::string& path, const std::string& content) {
     return true;
 }
 
+bool read_file(const std::string& path, std::string& out) {
+    std::ifstream file(path);
+    if (!file) return false;
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    out = buffer.str();
+    return true;
+}
+
+bool write_file_if_changed(const std::string& path, const std::string& content) {
+    std::string existing;
+    if (read_file(path, existing) && existing == content) {
+        return true;
+    }
+    return write_file(path, content);
+}
+
 bool run_cmd(const std::string& cmd) {
     return std::system(cmd.c_str()) == 0;
+}
+
+std::optional<std::string> run_cmd_out(const std::string& cmd) {
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        return std::nullopt;
+    }
+    std::string output;
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        output += buffer;
+    }
+    const int status = pclose(pipe);
+    if (status == -1) {
+        return std::nullopt;
+    }
+    return output;
+}
+
+std::string trim(std::string value) {
+    auto not_space = [](int ch) { return !std::isspace(ch); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+    return value;
 }
 
 static constexpr const char* kDefaultGroundPipeline =
@@ -77,6 +121,82 @@ bool is_rpi_platform() {
            info.platform_type == X_PLATFORM_TYPE_RPI_4 ||
            info.platform_type == X_PLATFORM_TYPE_RPI_CM4 ||
            info.platform_type == X_PLATFORM_TYPE_RPI_5;
+}
+
+bool is_rockchip_platform() {
+    const auto& info = platform_info();
+    return info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B;
+}
+
+bool has_systemctl() {
+    return std::filesystem::exists("/bin/systemctl") ||
+           std::filesystem::exists("/usr/bin/systemctl");
+}
+
+bool ensure_qopenhd_getty_dropin() {
+    std::error_code ec;
+    const std::string dropin_dir = "/etc/systemd/system/qopenhd.service.d";
+    std::filesystem::create_directories(dropin_dir, ec);
+    if (ec) {
+        std::cerr << "Failed to create " << dropin_dir << ": " << ec.message() << std::endl;
+        return false;
+    }
+
+    const std::string dropin_path = dropin_dir + "/override.conf";
+    const std::string content =
+        "[Service]\n"
+        "ExecStartPost=-/bin/systemctl stop getty@tty1.service\n"
+        "ExecStopPost=-/bin/systemctl start getty@tty1.service\n";
+
+    if (!write_file_if_changed(dropin_path, content)) {
+        std::cerr << "Failed to write " << dropin_path << std::endl;
+        return false;
+    }
+    return true;
+}
+
+std::string unit_state(const std::string& unit) {
+    if (!has_systemctl()) {
+        return "no-systemctl";
+    }
+    auto output = run_cmd_out("systemctl is-active " + unit + " 2>/dev/null");
+    if (!output.has_value()) {
+        return "unknown";
+    }
+    return trim(*output);
+}
+
+bool start_unit(const std::string& unit) {
+    if (!has_systemctl()) {
+        return false;
+    }
+    return run_cmd("systemctl start " + unit);
+}
+
+void report_service_status(const std::string& openhd_state,
+                           const std::string& qopenhd_state,
+                           const std::string& getty_state,
+                           bool qopenhd_requested,
+                           bool rockchip_platform) {
+    std::ostringstream desc;
+    desc << "Services: openhd=" << openhd_state
+         << ", qopenhd=" << (qopenhd_requested ? qopenhd_state : "skipped");
+    if (rockchip_platform) {
+        desc << ", getty@tty1=" << getty_state;
+    }
+
+    int severity = 0;
+    if (openhd_state != "active") {
+        severity = 2;
+    }
+    if (qopenhd_requested && qopenhd_state != "active") {
+        severity = 2;
+    }
+
+    set_status("sysutils.services", "Service status", desc.str(), severity);
 }
 
 void stop_video_process() {
@@ -112,6 +232,25 @@ bool start_video_process() {
     }
     g_video_pid = pid;
     return true;
+}
+
+void start_qopenhd_if_needed() {
+    if (!has_systemctl()) {
+        std::cerr << "systemctl not available, cannot start qopenhd." << std::endl;
+        return;
+    }
+
+    if (is_rockchip_platform()) {
+        if (!ensure_qopenhd_getty_dropin()) {
+            std::cerr << "Failed to prepare qopenhd getty drop-in." << std::endl;
+            return;
+        }
+    }
+
+    run_cmd("systemctl daemon-reload");
+    if (!run_cmd("systemctl start qopenhd.service")) {
+        std::cerr << "Failed to start qopenhd.service" << std::endl;
+    }
 }
 
 } // namespace
@@ -199,6 +338,34 @@ void start_ground_video_if_needed() {
     if (!start_video_process()) {
         std::cerr << "Failed to start ground video pipeline." << std::endl;
     }
+}
+
+void start_openhd_services_if_needed() {
+    const bool systemd_ok = has_systemctl();
+    const bool ground = is_ground_mode();
+    const bool rockchip = is_rockchip_platform();
+
+    if (!systemd_ok) {
+        set_status("sysutils.services", "Service status",
+                   "systemctl missing; cannot manage services", 2);
+        return;
+    }
+
+    const bool openhd_started = start_unit("openhd.service");
+    if (!openhd_started) {
+        std::cerr << "Failed to start openhd.service" << std::endl;
+    }
+
+    if (ground) {
+        start_qopenhd_if_needed();
+    }
+
+    const std::string openhd_state = unit_state("openhd.service");
+    const std::string qopenhd_state = ground ? unit_state("qopenhd.service") : "skipped";
+    const std::string getty_state =
+        rockchip ? unit_state("getty@tty1.service") : "n/a";
+
+    report_service_status(openhd_state, qopenhd_state, getty_state, ground, rockchip);
 }
 
 bool is_video_request(const std::string& line) {
