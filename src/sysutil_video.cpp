@@ -27,6 +27,7 @@
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
 #include "platforms_generated.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -179,6 +180,7 @@ bool start_unit(const std::string& unit) {
 void report_service_status(const std::string& openhd_state,
                            const std::string& qopenhd_state,
                            const std::string& getty_state,
+                           const std::string& video_state,
                            bool qopenhd_requested,
                            bool rockchip_platform) {
     std::ostringstream desc;
@@ -187,12 +189,18 @@ void report_service_status(const std::string& openhd_state,
     if (rockchip_platform) {
         desc << ", getty@tty1=" << getty_state;
     }
+    if (!video_state.empty()) {
+        desc << ", openhd-video=" << video_state;
+    }
 
     int severity = 0;
     if (openhd_state != "active") {
         severity = 2;
     }
     if (qopenhd_requested && qopenhd_state != "active") {
+        severity = 2;
+    }
+    if (!video_state.empty() && video_state != "active") {
         severity = 2;
     }
 
@@ -329,6 +337,28 @@ void start_ground_video_if_needed() {
     if (!is_ground_mode()) {
         return;
     }
+    if (is_rockchip_platform()) {
+        if (has_systemctl()) {
+            if (generate_decode_scripts_and_services()) {
+                run_cmd("systemctl daemon-reload");
+                if (!run_cmd("systemctl start openhd-video.service")) {
+                    std::cerr << "Failed to start openhd-video.service" << std::endl;
+                }
+            } else {
+                std::cerr << "Failed to generate decode scripts/services for rockchip." << std::endl;
+            }
+        } else {
+            std::cerr << "systemctl not available, cannot start openhd-video." << std::endl;
+        }
+
+        const std::string openhd_state = unit_state("openhd.service");
+        const std::string qopenhd_state = unit_state("qopenhd.service");
+        const std::string getty_state = unit_state("getty@tty1.service");
+        const std::string video_state = unit_state("openhd-video.service");
+        report_service_status(openhd_state, qopenhd_state, getty_state,
+                              video_state, true, true);
+        return;
+    }
     if (!is_rpi_platform()) {
         // Not implemented for non-Raspberry Pi platforms yet.
         std::cout << "Ground video pipeline not implemented for platform type "
@@ -365,7 +395,8 @@ void start_openhd_services_if_needed() {
     const std::string getty_state =
         rockchip ? unit_state("getty@tty1.service") : "n/a";
 
-    report_service_status(openhd_state, qopenhd_state, getty_state, ground, rockchip);
+    report_service_status(openhd_state, qopenhd_state, getty_state, "",
+                          ground, rockchip);
 }
 
 bool is_video_request(const std::string& line) {
