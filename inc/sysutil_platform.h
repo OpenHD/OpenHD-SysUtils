@@ -43,8 +43,12 @@ void init_platform_info();
 const PlatformInfo& platform_info();
 // Tests if the incoming message is a platform request.
 bool is_platform_request(const std::string& line);
-// Builds the platform response JSON payload.
-std::string build_platform_response();
+  // Builds the platform response JSON payload.
+  std::string build_platform_response();
+  // Tests if the incoming message requests platform update or refresh.
+  bool is_platform_update_request(const std::string& line);
+  // Handles platform update/refresh requests and returns response JSON.
+  std::string handle_platform_update(const std::string& line);
 
 }  // namespace sysutil
 

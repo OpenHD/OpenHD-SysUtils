@@ -318,4 +318,64 @@ std::string build_platform_response() {
   return out.str();
 }
 
+// Checks whether a request asks to update or refresh platform info.
+bool is_platform_update_request(const std::string& line) {
+  auto type = extract_string_field(line, "type");
+  return type.has_value() && *type == "sysutil.platform.update";
+}
+
+// Handles platform update requests (refresh detection or override).
+std::string handle_platform_update(const std::string& line) {
+  auto action = extract_string_field(line, "action").value_or("refresh");
+  SysutilConfig config;
+  const auto load_result = load_sysutil_config(config);
+  if (load_result == ConfigLoadResult::Error) {
+    return "{\"type\":\"sysutil.platform.update.response\",\"ok\":false}\n";
+  }
+
+  bool ok = true;
+  PlatformInfo info = platform_info();
+
+  if (action == "set") {
+    auto platform_type = extract_int_field(line, "platform_type");
+    auto platform_name = extract_string_field(line, "platform_name");
+    if (!platform_type.has_value()) {
+      ok = false;
+    } else {
+      info.platform_type = *platform_type;
+      if (platform_name) {
+        info.platform_name = *platform_name;
+      } else {
+        info.platform_name = platform_type_to_string(info.platform_type);
+      }
+      config.platform_type = info.platform_type;
+      config.platform_name = info.platform_name;
+      ok = write_sysutil_config(config);
+    }
+  } else if (action == "clear" || action == "refresh" || action == "detect") {
+    config.platform_type = std::nullopt;
+    config.platform_name = std::nullopt;
+    info = discover_platform_info();
+    config.platform_type = info.platform_type;
+    config.platform_name = info.platform_name;
+    ok = write_sysutil_config(config);
+  } else {
+    ok = false;
+  }
+
+  if (ok) {
+    g_platform_info = info;
+    g_platform_initialized = true;
+    write_platform_manifest(g_platform_info);
+  }
+
+  std::ostringstream out;
+  out << "{\"type\":\"sysutil.platform.update.response\",\"ok\":"
+      << (ok ? "true" : "false")
+      << ",\"platform_type\":" << info.platform_type
+      << ",\"platform_name\":\"" << json_escape(info.platform_name)
+      << "\",\"action\":\"" << json_escape(action) << "\"}\n";
+  return out.str();
+}
+
 }  // namespace sysutil

@@ -242,6 +242,22 @@ bool start_video_process() {
     return true;
 }
 
+bool control_video_service(const std::string& action) {
+    if (!has_systemctl()) {
+        return false;
+    }
+    if (action == "start") {
+        return run_cmd("systemctl start openhd-video.service");
+    }
+    if (action == "restart") {
+        return run_cmd("systemctl restart openhd-video.service");
+    }
+    if (action == "stop") {
+        return run_cmd("systemctl stop openhd-video.service");
+    }
+    return false;
+}
+
 void start_qopenhd_if_needed() {
     if (!has_systemctl()) {
         std::cerr << "systemctl not available, cannot start qopenhd." << std::endl;
@@ -407,19 +423,37 @@ bool is_video_request(const std::string& line) {
 std::string handle_video_request(const std::string& line) {
     auto action = extract_string_field(line, "action").value_or("start");
     bool ok = true;
+    std::string pipeline = "ground_default";
     if (!is_ground_mode()) {
         ok = false;
-    } else if (!is_rpi_platform()) {
-        // Not implemented for non-Raspberry Pi platforms yet.
+    } else if (is_rpi_platform()) {
+        pipeline = "rpi_process";
+        if (action == "start" || action == "restart") {
+            ok = start_video_process();
+        } else if (action == "stop") {
+            stop_video_process();
+            ok = true;
+        } else {
+            ok = false;
+        }
+    } else if (is_rockchip_platform()) {
+        pipeline = "systemd";
+        if (action == "start" || action == "restart") {
+            if (!generate_decode_scripts_and_services()) {
+                ok = false;
+            } else {
+                run_cmd("systemctl daemon-reload");
+                ok = control_video_service(action);
+            }
+        } else if (action == "stop") {
+            ok = control_video_service(action);
+        } else {
+            ok = false;
+        }
+    } else {
+        // Not implemented for non-Raspberry Pi / Rockchip platforms yet.
         std::cerr << "Ground video request ignored for platform type "
                   << platform_info().platform_type << std::endl;
-        ok = false;
-    } else if (action == "start" || action == "restart") {
-        ok = start_video_process();
-    } else if (action == "stop") {
-        stop_video_process();
-        ok = true;
-    } else {
         ok = false;
     }
 
@@ -427,7 +461,7 @@ std::string handle_video_request(const std::string& line) {
     out << "{\"type\":\"sysutil.video.response\",\"ok\":"
         << (ok ? "true" : "false")
         << ",\"action\":\"" << action
-        << "\",\"pipeline\":\"ground_default\"}\n";
+        << "\",\"pipeline\":\"" << pipeline << "\"}\n";
     return out.str();
 }
 

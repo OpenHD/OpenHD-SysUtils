@@ -226,6 +226,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_platform_update_request(line)) {
+                    const auto response = sysutil::handle_platform_update(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_settings_request(line)) {
                     const auto response = sysutil::build_settings_response();
                     if (gDebug) {
@@ -246,6 +252,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_debug_request(line)) {
                     const auto response = sysutil::build_debug_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_debug_update(line)) {
+                    const auto response = sysutil::handle_debug_update(line);
                     if (gDebug) {
                         std::cout << "sysutils => " << response;
                     }

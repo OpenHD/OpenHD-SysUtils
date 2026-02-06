@@ -36,6 +36,10 @@ bool debug_enabled();
 bool is_debug_request(const std::string& line);
 // Builds the debug response JSON payload.
 std::string build_debug_response();
+// Tests if the incoming message updates debug state.
+bool is_debug_update(const std::string& line);
+// Applies a debug update request and returns a response payload.
+std::string handle_debug_update(const std::string& line);
 
 }  // namespace sysutil
 

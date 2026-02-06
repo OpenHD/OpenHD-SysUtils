@@ -114,4 +114,39 @@ std::string build_debug_response() {
   return out.str();
 }
 
+// Checks whether the message updates debug state.
+bool is_debug_update(const std::string& line) {
+  auto type = extract_string_field(line, "type");
+  return type.has_value() && *type == "sysutil.debug.update";
+}
+
+// Applies a debug update and returns a response payload.
+std::string handle_debug_update(const std::string& line) {
+  auto requested = extract_bool_field(line, "debug");
+  if (!requested.has_value()) {
+    requested = extract_bool_field(line, "debug_enabled");
+  }
+  if (!requested.has_value()) {
+    return "{\"type\":\"sysutil.debug.update.response\",\"ok\":false}\n";
+  }
+
+  SysutilConfig config;
+  const auto load_result = load_sysutil_config(config);
+  if (load_result == ConfigLoadResult::Error) {
+    return "{\"type\":\"sysutil.debug.update.response\",\"ok\":false}\n";
+  }
+
+  config.debug_enabled = *requested;
+  const bool ok = write_sysutil_config(config);
+  if (ok) {
+    g_debug_enabled = *requested;
+  }
+
+  std::ostringstream out;
+  out << "{\"type\":\"sysutil.debug.update.response\",\"ok\":"
+      << (ok ? "true" : "false")
+      << ",\"debug\":" << (*requested ? "true" : "false") << "}\n";
+  return out.str();
+}
+
 }  // namespace sysutil
