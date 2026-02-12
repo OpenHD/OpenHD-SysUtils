@@ -71,6 +71,7 @@ add_executable(openhd_sys_utils
     src/sysutil_update.cpp
     src/sysutil_part.cpp
     src/sysutil_video.cpp
+    src/sysutil_wifi.cpp
     ${GENERATED_PLATFORMS_HEADER}
 )
 

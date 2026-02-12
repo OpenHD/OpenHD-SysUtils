@@ -1,0 +1,65 @@
+/******************************************************************************
+ * OpenHD
+ *
+ * Licensed under the GNU General Public License (GPL) Version 3.
+ *
+ * This software is provided "as-is," without warranty of any kind, express or
+ * implied, including but not limited to the warranties of merchantability,
+ * fitness for a particular purpose, and non-infringement. For details, see the
+ * full license in the LICENSE file provided with this source code.
+ *
+ * Non-Military Use Only:
+ * This software and its associated components are explicitly intended for
+ * civilian and non-military purposes. Use in any military or defense
+ * applications is strictly prohibited unless explicitly and individually
+ * licensed otherwise by the OpenHD Team.
+ *
+ * Contributors:
+ * A full list of contributors can be found at the OpenHD GitHub repository:
+ * https://github.com/OpenHD
+ *
+ * (C) OpenHD, All Rights Reserved.
+ ******************************************************************************/
+
+#ifndef SYSUTIL_WIFI_H
+#define SYSUTIL_WIFI_H
+
+#include <string>
+#include <vector>
+
+namespace sysutil {
+
+struct WifiCardInfo {
+  std::string interface_name;
+  std::string driver_name;
+  std::string mac;
+  int phy_index = -1;
+  std::string vendor_id;
+  std::string device_id;
+  std::string detected_type;
+  std::string override_type;
+  std::string effective_type;
+  bool disabled = false;
+};
+
+// Initializes cached Wi-Fi info (loading overrides and detecting cards).
+void init_wifi_info();
+
+// Returns cached Wi-Fi card info (initializes if needed).
+const std::vector<WifiCardInfo>& wifi_cards();
+
+// Checks whether a request asks for Wi-Fi info.
+bool is_wifi_request(const std::string& line);
+
+// Builds JSON response for Wi-Fi info requests.
+std::string build_wifi_response();
+
+// Checks whether a request asks to update Wi-Fi overrides or refresh detection.
+bool is_wifi_update_request(const std::string& line);
+
+// Handles Wi-Fi update requests and returns response JSON.
+std::string handle_wifi_update(const std::string& line);
+
+}  // namespace sysutil
+
+#endif  // SYSUTIL_WIFI_H

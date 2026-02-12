@@ -29,6 +29,7 @@
 #include "sysutil_status.h"
 #include "sysutil_update.h"
 #include "sysutil_video.h"
+#include "sysutil_wifi.h"
 
 namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
@@ -268,6 +269,18 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_wifi_request(line)) {
+                    const auto response = sysutil::build_wifi_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_wifi_update_request(line)) {
+                    const auto response = sysutil::handle_wifi_update(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_video_request(line)) {
                     const auto response = sysutil::handle_video_request(line);
                     if (gDebug) {
@@ -363,6 +376,7 @@ int main(int argc, char* argv[]) {
     sysutil::init_platform_info();
     sysutil::init_debug_info();
     sysutil::apply_hostname_if_enabled();
+    sysutil::init_wifi_info();
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {
