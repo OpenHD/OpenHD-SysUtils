@@ -288,6 +288,8 @@ std::string to_string_if(int value) {
   return std::to_string(value);
 }
 
+std::string normalize_id(std::string value);
+
 std::vector<WifiCardProfile> load_wifi_card_profiles() {
   std::vector<WifiCardProfile> profiles;
   auto content = read_file(kWifiCardsPath);
