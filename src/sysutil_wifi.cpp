@@ -61,6 +61,7 @@ struct WifiCardProfile {
   std::string vendor_id;
   std::string device_id;
   std::string name;
+  std::string power_mode;
   int min_mw = 0;
   int max_mw = 0;
   int lowest_mw = 0;
@@ -311,6 +312,17 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
     profile.vendor_id = normalize_id(*vendor);
     profile.device_id = normalize_id(*device);
     profile.name = extract_string_field(object, "name").value_or("");
+    profile.power_mode = to_upper(extract_string_field(object, "power_mode").value_or("mw"));
+    if (profile.power_mode == "FIXED") {
+      profile.min_mw = 0;
+      profile.max_mw = 0;
+      profile.lowest_mw = 0;
+      profile.low_mw = 0;
+      profile.mid_mw = 0;
+      profile.high_mw = 0;
+      profiles.push_back(profile);
+      continue;
+    }
     profile.min_mw = extract_int_field(object, "min_mw").value_or(0);
     profile.max_mw = extract_int_field(object, "max_mw").value_or(0);
     profile.lowest_mw = extract_int_field(object, "lowest").value_or(0);
@@ -683,6 +695,8 @@ WifiCardInfo build_wifi_card(
 
   const auto* profile =
       find_wifi_profile(profiles, card.vendor_id, card.device_id);
+  const bool profile_fixed =
+      profile && to_upper(profile->power_mode) == "FIXED";
   if (profile) {
     if (card.card_name.empty()) {
       card.card_name = profile->name;
@@ -710,7 +724,7 @@ WifiCardInfo build_wifi_card(
     card.power_level = to_upper(card.power_level);
   }
 
-  if (profile && !card.power_level.empty()) {
+  if (profile && !card.power_level.empty() && !profile_fixed) {
     const auto& level = card.power_level;
     int selected_mw = 0;
     if (level == "LOWEST") {
@@ -725,6 +739,11 @@ WifiCardInfo build_wifi_card(
     if (selected_mw > 0) {
       card.tx_power = std::to_string(selected_mw);
     }
+  }
+
+  if (profile_fixed) {
+    card.power_level = "FIXED";
+    card.tx_power.clear();
   }
 
   if (card.tx_power_high.empty() && profile && profile->high_mw > 0) {

@@ -4,23 +4,17 @@
       "vendor_id": "0x02D0",
       "device_id": "0xA9A6",
       "name": "Raspberry Internal",
-      "min_mw": 25,
-      "max_mw": 1000,
-      "levels_mw": {
-        "lowest": 25,
-        "low": 100,
-        "mid": 200,
-        "high": 500
-      }
+      "power_mode": "fixed"
     },
     {
       "vendor_id": "0x0BDA",
       "device_id": "0xA81A",
       "name": "LB-Link 8812eu",
+      "power_mode": "mw",
       "min_mw": 0,
       "max_mw": 1000,
       "levels_mw": {
-        "lowest": 25,
+        "lowest": 0,
         "low": 100,
         "mid": 500,
         "high": 1000
