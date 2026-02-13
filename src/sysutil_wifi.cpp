@@ -296,14 +296,100 @@ void fill_vendor_device_from_uevent(const std::string& uevent,
   }
 }
 
+void fill_vendor_device_from_modalias(const std::string& modalias,
+                                      std::string& vendor,
+                                      std::string& device) {
+  if (!vendor.empty() && !device.empty()) {
+    return;
+  }
+  std::smatch match;
+  std::regex usb_re{"usb:v([0-9A-Fa-f]{4})p([0-9A-Fa-f]{4})"};
+  if (std::regex_search(modalias, match, usb_re) && match.size() == 3) {
+    if (vendor.empty()) {
+      vendor = normalize_id(match[1].str());
+    }
+    if (device.empty()) {
+      device = normalize_id(match[2].str());
+    }
+    return;
+  }
+  std::regex pci_re{"pci:v([0-9A-Fa-f]{4})d([0-9A-Fa-f]{4})"};
+  if (std::regex_search(modalias, match, pci_re) && match.size() == 3) {
+    if (vendor.empty()) {
+      vendor = normalize_id(match[1].str());
+    }
+    if (device.empty()) {
+      device = normalize_id(match[2].str());
+    }
+  }
+}
+
+void fill_vendor_device_from_sysfs(const std::string& device_path,
+                                   std::string& vendor,
+                                   std::string& device) {
+  if (device_path.empty()) {
+    return;
+  }
+  std::filesystem::path current(device_path);
+  std::error_code ec;
+  auto resolved = std::filesystem::canonical(current, ec);
+  if (!ec) {
+    current = resolved;
+  } else {
+    auto weak = std::filesystem::weakly_canonical(current, ec);
+    if (!ec) {
+      current = weak;
+    }
+  }
+  for (int depth = 0; depth < 6; ++depth) {
+    if (current.empty()) {
+      break;
+    }
+
+    const auto vendor_path = (current / "vendor").string();
+    const auto device_id_path = (current / "device").string();
+    const auto usb_vendor_path = (current / "idVendor").string();
+    const auto usb_device_path = (current / "idProduct").string();
+    const auto uevent_path = (current / "uevent").string();
+    const auto modalias_path = (current / "modalias").string();
+
+    if (vendor.empty() && file_exists(vendor_path)) {
+      vendor = normalize_id(read_file(vendor_path).value_or(""));
+    }
+    if (device.empty() && file_exists(device_id_path)) {
+      device = normalize_id(read_file(device_id_path).value_or(""));
+    }
+    if (vendor.empty() && file_exists(usb_vendor_path)) {
+      vendor = normalize_id(read_file(usb_vendor_path).value_or(""));
+    }
+    if (device.empty() && file_exists(usb_device_path)) {
+      device = normalize_id(read_file(usb_device_path).value_or(""));
+    }
+    if (file_exists(uevent_path)) {
+      fill_vendor_device_from_uevent(read_file(uevent_path).value_or(""),
+                                     vendor, device);
+    }
+    if (file_exists(modalias_path)) {
+      fill_vendor_device_from_modalias(read_file(modalias_path).value_or(""),
+                                       vendor, device);
+    }
+    if (!vendor.empty() && !device.empty()) {
+      break;
+    }
+    current = current.parent_path();
+  }
+}
+
 WifiCardInfo build_wifi_card(const std::string& interface_name,
                              const std::unordered_map<std::string, std::string>& overrides) {
   WifiCardInfo card{};
   card.interface_name = interface_name;
 
-  auto uevent_path = "/sys/class/net/" + interface_name + "/device/uevent";
+  auto device_path = "/sys/class/net/" + interface_name + "/device";
+  auto uevent_path = device_path + "/uevent";
   if (interface_name == "ath0" && !file_exists(uevent_path)) {
-    uevent_path = "/sys/class/net/wifi0/device/uevent";
+    device_path = "/sys/class/net/wifi0/device";
+    uevent_path = device_path + "/uevent";
   }
   const auto uevent = read_file(uevent_path).value_or("");
   if (!uevent.empty()) {
@@ -323,23 +409,7 @@ WifiCardInfo build_wifi_card(const std::string& interface_name,
   const auto mac_path = "/sys/class/net/" + interface_name + "/address";
   card.mac = trim_copy(read_file(mac_path).value_or(""));
 
-  const auto vendor_path = "/sys/class/net/" + interface_name + "/device/vendor";
-  const auto device_path = "/sys/class/net/" + interface_name + "/device/device";
-  const auto usb_vendor_path = "/sys/class/net/" + interface_name + "/device/idVendor";
-  const auto usb_device_path = "/sys/class/net/" + interface_name + "/device/idProduct";
-
-  if (file_exists(vendor_path)) {
-    card.vendor_id = normalize_id(read_file(vendor_path).value_or(""));
-  }
-  if (file_exists(device_path)) {
-    card.device_id = normalize_id(read_file(device_path).value_or(""));
-  }
-  if (card.vendor_id.empty() && file_exists(usb_vendor_path)) {
-    card.vendor_id = normalize_id(read_file(usb_vendor_path).value_or(""));
-  }
-  if (card.device_id.empty() && file_exists(usb_device_path)) {
-    card.device_id = normalize_id(read_file(usb_device_path).value_or(""));
-  }
+  fill_vendor_device_from_sysfs(device_path, card.vendor_id, card.device_id);
   if (!uevent.empty()) {
     fill_vendor_device_from_uevent(uevent, card.vendor_id, card.device_id);
   }
