@@ -40,6 +40,17 @@ struct WifiCardInfo {
   std::string override_type;
   std::string effective_type;
   bool disabled = false;
+  std::string tx_power;
+  std::string tx_power_high;
+  std::string tx_power_low;
+  std::string card_name;
+  std::string power_level;
+  std::string power_lowest;
+  std::string power_low;
+  std::string power_mid;
+  std::string power_high;
+  std::string power_min;
+  std::string power_max;
 };
 
 // Initializes cached Wi-Fi info (loading overrides and detecting cards).

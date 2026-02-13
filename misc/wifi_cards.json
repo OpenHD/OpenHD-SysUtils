@@ -1,0 +1,17 @@
+{
+  "cards": [
+    {
+      "vendor_id": "0x0BDA",
+      "device_id": "0xA81A",
+      "name": "RTL8812EU",
+      "min_mw": 25,
+      "max_mw": 1000,
+      "levels_mw": {
+        "lowest": 25,
+        "low": 100,
+        "mid": 500,
+        "high": 1000
+      }
+    }
+  ]
+}

@@ -41,9 +41,33 @@ namespace {
 
 constexpr const char* kOverridesPath =
     "/usr/local/share/OpenHD/SysUtils/wifi_overrides.conf";
+constexpr const char* kTxPowerOverridesPath =
+    "/usr/local/share/OpenHD/SysUtils/wifi_txpower.conf";
+constexpr const char* kWifiCardsPath =
+    "/usr/local/share/OpenHD/SysUtils/wifi_cards.json";
 
 std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
+
+struct WifiTxPowerOverride {
+  std::string tx_power;
+  std::string tx_power_high;
+  std::string tx_power_low;
+  std::string card_name;
+  std::string power_level;
+};
+
+struct WifiCardProfile {
+  std::string vendor_id;
+  std::string device_id;
+  std::string name;
+  int min_mw = 0;
+  int max_mw = 0;
+  int lowest_mw = 0;
+  int low_mw = 0;
+  int mid_mw = 0;
+  int high_mw = 0;
+};
 
 std::string trim_copy(std::string value) {
   auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
@@ -129,6 +153,17 @@ void append_cards_json(std::ostringstream& out,
         << ",\"detected_type\":\"" << json_escape(card.detected_type) << "\""
         << ",\"override_type\":\"" << json_escape(card.override_type) << "\""
         << ",\"type\":\"" << json_escape(card.effective_type) << "\""
+        << ",\"tx_power\":\"" << json_escape(card.tx_power) << "\""
+        << ",\"tx_power_high\":\"" << json_escape(card.tx_power_high) << "\""
+        << ",\"tx_power_low\":\"" << json_escape(card.tx_power_low) << "\""
+        << ",\"card_name\":\"" << json_escape(card.card_name) << "\""
+        << ",\"power_level\":\"" << json_escape(card.power_level) << "\""
+        << ",\"power_lowest\":\"" << json_escape(card.power_lowest) << "\""
+        << ",\"power_low\":\"" << json_escape(card.power_low) << "\""
+        << ",\"power_mid\":\"" << json_escape(card.power_mid) << "\""
+        << ",\"power_high\":\"" << json_escape(card.power_high) << "\""
+        << ",\"power_min\":\"" << json_escape(card.power_min) << "\""
+        << ",\"power_max\":\"" << json_escape(card.power_max) << "\""
         << ",\"disabled\":" << (card.disabled ? "true" : "false")
         << "}";
   }
@@ -175,6 +210,218 @@ bool write_overrides(const std::unordered_map<std::string, std::string>& data) {
   file << "# OpenHD SysUtils Wi-Fi overrides\n";
   for (const auto& entry : data) {
     file << entry.first << "=" << entry.second << "\n";
+  }
+  return static_cast<bool>(file);
+}
+
+bool has_tx_power_values(const WifiTxPowerOverride& entry) {
+  return !entry.tx_power.empty() || !entry.tx_power_high.empty() ||
+         !entry.tx_power_low.empty() || !entry.card_name.empty() ||
+         !entry.power_level.empty();
+}
+
+std::vector<std::string> extract_array_objects(const std::string& content,
+                                               const std::string& key) {
+  std::vector<std::string> objects;
+  const std::string needle = "\"" + key + "\"";
+  auto key_pos = content.find(needle);
+  if (key_pos == std::string::npos) {
+    return objects;
+  }
+  auto colon_pos = content.find(':', key_pos + needle.size());
+  if (colon_pos == std::string::npos) {
+    return objects;
+  }
+  auto array_pos = content.find('[', colon_pos + 1);
+  if (array_pos == std::string::npos) {
+    return objects;
+  }
+
+  bool in_string = false;
+  bool escape = false;
+  int depth = 0;
+  std::size_t obj_start = std::string::npos;
+  for (std::size_t pos = array_pos + 1; pos < content.size(); ++pos) {
+    char ch = content[pos];
+    if (in_string) {
+      if (escape) {
+        escape = false;
+      } else if (ch == '\\') {
+        escape = true;
+      } else if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      continue;
+    }
+    if (ch == '{') {
+      if (depth == 0) {
+        obj_start = pos;
+      }
+      ++depth;
+      continue;
+    }
+    if (ch == '}') {
+      if (depth > 0) {
+        --depth;
+        if (depth == 0 && obj_start != std::string::npos) {
+          objects.emplace_back(content.substr(obj_start, pos - obj_start + 1));
+          obj_start = std::string::npos;
+        }
+      }
+      continue;
+    }
+    if (ch == ']' && depth == 0) {
+      break;
+    }
+  }
+  return objects;
+}
+
+std::string to_string_if(int value) {
+  if (value <= 0) {
+    return "";
+  }
+  return std::to_string(value);
+}
+
+std::vector<WifiCardProfile> load_wifi_card_profiles() {
+  std::vector<WifiCardProfile> profiles;
+  auto content = read_file(kWifiCardsPath);
+  if (!content) {
+    return profiles;
+  }
+  auto objects = extract_array_objects(*content, "cards");
+  if (objects.empty()) {
+    return profiles;
+  }
+
+  for (const auto& object : objects) {
+    auto vendor = extract_string_field(object, "vendor_id");
+    auto device = extract_string_field(object, "device_id");
+    if (!vendor || !device) {
+      continue;
+    }
+    WifiCardProfile profile{};
+    profile.vendor_id = normalize_id(*vendor);
+    profile.device_id = normalize_id(*device);
+    profile.name = extract_string_field(object, "name").value_or("");
+    profile.min_mw = extract_int_field(object, "min_mw").value_or(0);
+    profile.max_mw = extract_int_field(object, "max_mw").value_or(0);
+    profile.lowest_mw = extract_int_field(object, "lowest").value_or(0);
+    profile.low_mw = extract_int_field(object, "low").value_or(0);
+    profile.mid_mw = extract_int_field(object, "mid").value_or(0);
+    profile.high_mw = extract_int_field(object, "high").value_or(0);
+
+    if (profile.min_mw <= 0 && profile.lowest_mw > 0) {
+      profile.min_mw = profile.lowest_mw;
+    }
+    if (profile.max_mw <= 0 && profile.high_mw > 0) {
+      profile.max_mw = profile.high_mw;
+    }
+
+    profiles.push_back(profile);
+  }
+  return profiles;
+}
+
+const WifiCardProfile* find_wifi_profile(
+    const std::vector<WifiCardProfile>& profiles,
+    const std::string& vendor_id,
+    const std::string& device_id) {
+  for (const auto& profile : profiles) {
+    if (equal_after_uppercase(profile.vendor_id, vendor_id) &&
+        equal_after_uppercase(profile.device_id, device_id)) {
+      return &profile;
+    }
+  }
+  return nullptr;
+}
+
+std::unordered_map<std::string, WifiTxPowerOverride> load_tx_power_overrides() {
+  std::unordered_map<std::string, WifiTxPowerOverride> overrides;
+  std::ifstream file(kTxPowerOverridesPath);
+  if (!file) {
+    return overrides;
+  }
+  std::string line;
+  while (std::getline(file, line)) {
+    line = trim_copy(line);
+    if (line.empty() || line[0] == '#') {
+      continue;
+    }
+    auto pos = line.find('=');
+    if (pos == std::string::npos) {
+      continue;
+    }
+    auto key = trim_copy(line.substr(0, pos));
+    auto value = trim_copy(line.substr(pos + 1));
+    if (key.empty()) {
+      continue;
+    }
+    auto dot = key.find('.');
+    if (dot == std::string::npos) {
+      continue;
+    }
+    auto iface = trim_copy(key.substr(0, dot));
+    auto field = trim_copy(key.substr(dot + 1));
+    if (iface.empty() || field.empty()) {
+      continue;
+    }
+    auto field_upper = to_upper(field);
+    auto& entry = overrides[iface];
+    if (field_upper == "TX_POWER") {
+      entry.tx_power = value;
+    } else if (field_upper == "TX_POWER_HIGH") {
+      entry.tx_power_high = value;
+    } else if (field_upper == "TX_POWER_LOW") {
+      entry.tx_power_low = value;
+    } else if (field_upper == "CARD_NAME") {
+      entry.card_name = value;
+    } else if (field_upper == "POWER_LEVEL") {
+      entry.power_level = value;
+    }
+  }
+  return overrides;
+}
+
+bool write_tx_power_overrides(
+    const std::unordered_map<std::string, WifiTxPowerOverride>& data) {
+  std::error_code ec;
+  std::filesystem::create_directories(
+      std::filesystem::path(kTxPowerOverridesPath).parent_path(), ec);
+  if (ec) {
+    return false;
+  }
+  std::ofstream file(kTxPowerOverridesPath);
+  if (!file) {
+    return false;
+  }
+  file << "# OpenHD SysUtils Wi-Fi TX power overrides\n";
+  for (const auto& entry : data) {
+    if (!has_tx_power_values(entry.second)) {
+      continue;
+    }
+    const auto& iface = entry.first;
+    const auto& values = entry.second;
+    if (!values.card_name.empty()) {
+      file << iface << ".card_name=" << values.card_name << "\n";
+    }
+    if (!values.power_level.empty()) {
+      file << iface << ".power_level=" << values.power_level << "\n";
+    }
+    if (!values.tx_power.empty()) {
+      file << iface << ".tx_power=" << values.tx_power << "\n";
+    }
+    if (!values.tx_power_high.empty()) {
+      file << iface << ".tx_power_high=" << values.tx_power_high << "\n";
+    }
+    if (!values.tx_power_low.empty()) {
+      file << iface << ".tx_power_low=" << values.tx_power_low << "\n";
+    }
   }
   return static_cast<bool>(file);
 }
@@ -380,8 +627,11 @@ void fill_vendor_device_from_sysfs(const std::string& device_path,
   }
 }
 
-WifiCardInfo build_wifi_card(const std::string& interface_name,
-                             const std::unordered_map<std::string, std::string>& overrides) {
+WifiCardInfo build_wifi_card(
+    const std::string& interface_name,
+    const std::unordered_map<std::string, std::string>& overrides,
+    const std::unordered_map<std::string, WifiTxPowerOverride>& tx_overrides,
+    const std::vector<WifiCardProfile>& profiles) {
   WifiCardInfo card{};
   card.interface_name = interface_name;
 
@@ -429,11 +679,66 @@ WifiCardInfo build_wifi_card(const std::string& interface_name,
     card.effective_type = card.detected_type;
   }
 
+  const auto* profile =
+      find_wifi_profile(profiles, card.vendor_id, card.device_id);
+  if (profile) {
+    if (card.card_name.empty()) {
+      card.card_name = profile->name;
+    }
+    card.power_lowest = to_string_if(profile->lowest_mw);
+    card.power_low = to_string_if(profile->low_mw);
+    card.power_mid = to_string_if(profile->mid_mw);
+    card.power_high = to_string_if(profile->high_mw);
+    card.power_min = to_string_if(profile->min_mw);
+    card.power_max = to_string_if(profile->max_mw);
+  }
+
+  auto tx_it = tx_overrides.find(interface_name);
+  if (tx_it != tx_overrides.end()) {
+    card.tx_power = tx_it->second.tx_power;
+    card.tx_power_high = tx_it->second.tx_power_high;
+    card.tx_power_low = tx_it->second.tx_power_low;
+    if (!tx_it->second.card_name.empty()) {
+      card.card_name = tx_it->second.card_name;
+    }
+    card.power_level = tx_it->second.power_level;
+  }
+
+  if (!card.power_level.empty()) {
+    card.power_level = to_upper(card.power_level);
+  }
+
+  if (profile && !card.power_level.empty()) {
+    const auto& level = card.power_level;
+    int selected_mw = 0;
+    if (level == "LOWEST") {
+      selected_mw = profile->lowest_mw;
+    } else if (level == "LOW") {
+      selected_mw = profile->low_mw;
+    } else if (level == "MID") {
+      selected_mw = profile->mid_mw;
+    } else if (level == "HIGH") {
+      selected_mw = profile->high_mw;
+    }
+    if (selected_mw > 0) {
+      card.tx_power = std::to_string(selected_mw);
+    }
+  }
+
+  if (card.tx_power_high.empty() && profile && profile->high_mw > 0) {
+    card.tx_power_high = std::to_string(profile->high_mw);
+  }
+  if (card.tx_power_low.empty() && profile && profile->lowest_mw > 0) {
+    card.tx_power_low = std::to_string(profile->lowest_mw);
+  }
+
   return card;
 }
 
 std::vector<WifiCardInfo> detect_wifi_cards(
-    const std::unordered_map<std::string, std::string>& overrides) {
+    const std::unordered_map<std::string, std::string>& overrides,
+    const std::unordered_map<std::string, WifiTxPowerOverride>& tx_overrides,
+    const std::vector<WifiCardProfile>& profiles) {
   std::vector<WifiCardInfo> cards;
   std::error_code ec;
   std::filesystem::directory_iterator dir("/sys/class/net", ec);
@@ -446,14 +751,16 @@ std::vector<WifiCardInfo> detect_wifi_cards(
     if (!std::filesystem::exists(entry.path() / "phy80211", exists_ec)) {
       continue;
     }
-    cards.push_back(build_wifi_card(iface, overrides));
+    cards.push_back(build_wifi_card(iface, overrides, tx_overrides, profiles));
   }
   return cards;
 }
 
 void refresh_wifi_info() {
   const auto overrides = load_overrides();
-  g_wifi_cards = detect_wifi_cards(overrides);
+  const auto tx_overrides = load_tx_power_overrides();
+  const auto profiles = load_wifi_card_profiles();
+  g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
   g_wifi_initialized = true;
 }
 
@@ -493,28 +800,72 @@ std::string handle_wifi_update(const std::string& line) {
   auto action = extract_string_field(line, "action").value_or("refresh");
   const auto iface = extract_string_field(line, "interface");
   const auto override_type = extract_string_field(line, "override_type");
+  const auto tx_power = extract_string_field(line, "tx_power");
+  const auto tx_power_high = extract_string_field(line, "tx_power_high");
+  const auto tx_power_low = extract_string_field(line, "tx_power_low");
+  const auto card_name = extract_string_field(line, "card_name");
+  const auto power_level = extract_string_field(line, "power_level");
 
   bool ok = true;
   auto overrides = load_overrides();
+  auto tx_overrides = load_tx_power_overrides();
 
   if (action == "set") {
     if (!iface || iface->empty()) {
       ok = false;
-    } else if (!override_type || override_type->empty() ||
-               equal_after_uppercase(*override_type, "AUTO")) {
-      overrides.erase(*iface);
-      ok = write_overrides(overrides);
     } else {
-      overrides[*iface] = *override_type;
-      ok = write_overrides(overrides);
+      if (override_type.has_value()) {
+        if (override_type->empty() ||
+            equal_after_uppercase(*override_type, "AUTO")) {
+          overrides.erase(*iface);
+        } else {
+          overrides[*iface] = *override_type;
+        }
+        ok = write_overrides(overrides) && ok;
+      }
+
+      if (tx_power.has_value() || tx_power_high.has_value() ||
+          tx_power_low.has_value() || card_name.has_value() ||
+          power_level.has_value()) {
+        auto& entry = tx_overrides[*iface];
+        if (tx_power.has_value()) {
+          entry.tx_power = *tx_power;
+        }
+        if (tx_power_high.has_value()) {
+          entry.tx_power_high = *tx_power_high;
+        }
+        if (tx_power_low.has_value()) {
+          entry.tx_power_low = *tx_power_low;
+        }
+        if (card_name.has_value()) {
+          entry.card_name = *card_name;
+        }
+        if (power_level.has_value()) {
+          if (power_level->empty() ||
+              equal_after_uppercase(*power_level, "AUTO")) {
+            entry.power_level.clear();
+          } else {
+            entry.power_level = to_upper(trim_copy(*power_level));
+          }
+          entry.tx_power.clear();
+          entry.tx_power_high.clear();
+          entry.tx_power_low.clear();
+        }
+        if (!has_tx_power_values(entry)) {
+          tx_overrides.erase(*iface);
+        }
+        ok = write_tx_power_overrides(tx_overrides) && ok;
+      }
     }
   } else if (action == "clear") {
     if (iface && !iface->empty()) {
       overrides.erase(*iface);
-      ok = write_overrides(overrides);
+      tx_overrides.erase(*iface);
+      ok = write_overrides(overrides) && write_tx_power_overrides(tx_overrides);
     } else {
       overrides.clear();
-      ok = write_overrides(overrides);
+      tx_overrides.clear();
+      ok = write_overrides(overrides) && write_tx_power_overrides(tx_overrides);
     }
   } else if (action == "refresh" || action == "detect") {
     ok = true;
