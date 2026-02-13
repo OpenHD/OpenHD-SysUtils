@@ -86,6 +86,11 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+    CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
+    target_link_libraries(openhd_sys_utils PRIVATE stdc++fs)
+endif()
+
 set(BUILD_VERSION_FILE ${CMAKE_CURRENT_BINARY_DIR}/build_version.txt)
 set(GENERATED_VERSION_HEADER ${CMAKE_CURRENT_BINARY_DIR}/version_generated.h)
 
