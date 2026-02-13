@@ -44,6 +44,7 @@ struct WifiCardInfo {
   std::string tx_power_high;
   std::string tx_power_low;
   std::string card_name;
+  std::string power_mode;
   std::string power_level;
   std::string power_lowest;
   std::string power_low;

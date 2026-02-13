@@ -158,6 +158,7 @@ void append_cards_json(std::ostringstream& out,
         << ",\"tx_power_high\":\"" << json_escape(card.tx_power_high) << "\""
         << ",\"tx_power_low\":\"" << json_escape(card.tx_power_low) << "\""
         << ",\"card_name\":\"" << json_escape(card.card_name) << "\""
+        << ",\"power_mode\":\"" << json_escape(card.power_mode) << "\""
         << ",\"power_level\":\"" << json_escape(card.power_level) << "\""
         << ",\"power_lowest\":\"" << json_escape(card.power_lowest) << "\""
         << ",\"power_low\":\"" << json_escape(card.power_low) << "\""
@@ -701,6 +702,7 @@ WifiCardInfo build_wifi_card(
     if (card.card_name.empty()) {
       card.card_name = profile->name;
     }
+    card.power_mode = profile->power_mode;
     card.power_lowest = to_string_if(profile->lowest_mw);
     card.power_low = to_string_if(profile->low_mw);
     card.power_mid = to_string_if(profile->mid_mw);
