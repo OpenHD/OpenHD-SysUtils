@@ -97,19 +97,16 @@ jobs:
                 return ts
             return None
 
-          def never_downloaded(item: dict):
-            last_downloaded = parse_time(item.get("last_downloaded"))
-            if last_downloaded:
-              return False
+          def download_count(item: dict):
             for key in ("downloads", "downloads_total", "downloads_count", "download_count"):
               if key in item and item.get(key) is not None:
                 try:
-                  return int(item.get(key)) == 0
+                  return int(item.get(key))
                 except (TypeError, ValueError):
-                  return False
+                  return None
             return None
 
-          cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+          cutoff = datetime.now(timezone.utc) - timedelta(days=365)
           delete_flags: List[str] = []
           try:
             help_text = run_text(["cloudsmith", "delete", "--help"]).lower()
@@ -164,8 +161,10 @@ jobs:
                 continue
               if uploaded > cutoff:
                 continue
-              download_state = never_downloaded(item)
-              if download_state is True:
+              count = download_count(item)
+              if count is None:
+                continue
+              if count < 20:
                 matched.append(slug)
 
             if not matched:
