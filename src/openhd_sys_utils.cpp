@@ -317,6 +317,16 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (auto type = sysutil::extract_string_field(line, "type");
+                           type && type->rfind("sysutil.", 0) == 0) {
+                    std::ostringstream out;
+                    out << "{\"type\":\"sysutil.error\",\"ok\":false,"
+                           "\"message\":\"Unknown sysutil request: "
+                        << *type << "\"}\n";
+                    if (gDebug) {
+                        std::cout << "sysutils => " << out.str();
+                    }
+                    (void)sendAll(fd, out.str());
                 } else {
                     sysutil::handle_status_message(line);
                 }
