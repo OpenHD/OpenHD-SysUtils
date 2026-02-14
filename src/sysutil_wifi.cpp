@@ -1033,6 +1033,16 @@ std::string handle_link_control_request(const std::string& line) {
   const auto tx_power_index = extract_int_field(line, "tx_power_index");
   const auto power_level = extract_string_field(line, "power_level");
 
+  std::cerr << "[sysutils] link.control request iface="
+            << (iface ? *iface : "")
+            << " freq=" << (frequency ? std::to_string(*frequency) : "")
+            << " width=" << (channel_width ? std::to_string(*channel_width) : "")
+            << " mcs=" << (mcs_index ? std::to_string(*mcs_index) : "")
+            << " tx_mw=" << (tx_power_mw ? std::to_string(*tx_power_mw) : "")
+            << " tx_idx="
+            << (tx_power_index ? std::to_string(*tx_power_index) : "")
+            << " level=" << (power_level ? *power_level : "") << std::endl;
+
   bool has_value = false;
   has_value = has_value || (iface.has_value() && !iface->empty());
   has_value = has_value || frequency.has_value();
@@ -1081,12 +1091,16 @@ std::string handle_link_control_request(const std::string& line) {
     if (!response) {
       ok = false;
       message = "OpenHD control socket not available.";
+      std::cerr << "[sysutils] link.control openhd response: <none>"
+                << std::endl;
     } else {
       ok = extract_bool_field(*response, "ok").value_or(false);
       message = extract_string_field(*response, "message").value_or("");
       if (message.empty() && !ok) {
         message = "OpenHD rejected the RF update.";
       }
+      std::cerr << "[sysutils] link.control openhd response: " << *response
+                << std::endl;
     }
   }
 
