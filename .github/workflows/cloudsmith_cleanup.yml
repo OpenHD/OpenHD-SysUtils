@@ -55,6 +55,16 @@ jobs:
               print(result.stdout, file=sys.stderr)
               raise exc
 
+          def run_text(cmd: List[str]) -> str:
+            result = subprocess.run(
+              cmd,
+              check=True,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True,
+            )
+            return result.stdout + "\n" + result.stderr
+
           def pick_repo_slug(item: dict) -> str:
             return (
               item.get("slug")
@@ -101,6 +111,21 @@ jobs:
             return None
 
           cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+          delete_flags: List[str] = []
+          try:
+            help_text = run_text(["cloudsmith", "delete", "--help"]).lower()
+            if "--yes" in help_text:
+              delete_flags = ["--yes"]
+            elif "--force" in help_text:
+              delete_flags = ["--force"]
+            elif "--no-prompt" in help_text:
+              delete_flags = ["--no-prompt"]
+            elif "--no-input" in help_text:
+              delete_flags = ["--no-input"]
+            elif "-y" in help_text:
+              delete_flags = ["-y"]
+          except subprocess.CalledProcessError:
+            delete_flags = []
           repo_override = os.environ.get("CLOUDSMITH_REPO", "").strip()
           if repo_override:
             repos = [repo_override]
@@ -153,7 +178,7 @@ jobs:
               package_ref = f"{owner}/{repo}/{slug}"
               try:
                 subprocess.run(
-                  ["cloudsmith", "delete", package_ref],
+                  ["cloudsmith", "delete", *delete_flags, package_ref],
                   check=True,
                   stdout=subprocess.PIPE,
                   stderr=subprocess.PIPE,
