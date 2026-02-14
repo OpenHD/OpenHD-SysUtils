@@ -61,6 +61,62 @@
         "mid": 42,
         "high": 58
       }
+    },
+    {
+      "vendor_id": "0x0B05",
+      "device_id": "0x1853",
+      "name": "Asus AC68",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
+      }
+    },
+    {
+      "vendor_id": "0x2357",
+      "device_id": "0x0106",
+      "name": "TPlink T9UH",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
+      }
+    },
+    {
+      "vendor_id": "0x0BDA",
+      "device_id": "0xB812",
+      "name": "Comfast 8812BU",
+      "power_mode": "mw",
+      "min_mw": 25,
+      "max_mw": 1000,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 250,
+        "mid": 500,
+        "high": 1000
+      }
+    },
+    {
+      "vendor_id": "0x0BDA",
+      "device_id": "0x0811",
+      "name": "TP-Link T4UH",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
+      }
     }
   ]
 }
