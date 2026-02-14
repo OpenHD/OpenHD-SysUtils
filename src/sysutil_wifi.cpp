@@ -25,14 +25,21 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <cerrno>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <poll.h>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unordered_map>
+#include <unistd.h>
 
 #include "sysutil_protocol.h"
 
@@ -45,6 +52,10 @@ constexpr const char* kTxPowerOverridesPath =
     "/usr/local/share/OpenHD/SysUtils/wifi_txpower.conf";
 constexpr const char* kWifiCardsPath =
     "/usr/local/share/OpenHD/SysUtils/wifi_cards.json";
+constexpr const char* kOpenHdControlSocketPath =
+    "/run/openhd/openhd_ctrl.sock";
+constexpr std::size_t kMaxControlLineLength = 4096;
+constexpr auto kOpenHdControlTimeout = std::chrono::milliseconds(900);
 
 std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
@@ -135,6 +146,102 @@ std::string json_escape(const std::string& input) {
     }
   }
   return out;
+}
+
+bool write_all(int fd, const std::string& data) {
+  std::size_t offset = 0;
+  while (offset < data.size()) {
+    const ssize_t written =
+        ::send(fd, data.data() + offset, data.size() - offset, MSG_NOSIGNAL);
+    if (written > 0) {
+      offset += static_cast<std::size_t>(written);
+      continue;
+    }
+    if (written < 0 && errno == EINTR) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+std::optional<std::string> read_line_with_timeout(
+    int fd, std::chrono::milliseconds timeout) {
+  std::string buffer;
+  buffer.reserve(256);
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  char tmp[256];
+
+  while (buffer.size() < kMaxControlLineLength) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      return std::nullopt;
+    }
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    const int ready = ::poll(&pfd, 1, static_cast<int>(remaining.count()));
+    if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return std::nullopt;
+    }
+    if (ready == 0) {
+      return std::nullopt;
+    }
+    const ssize_t count = ::recv(fd, tmp, sizeof(tmp), 0);
+    if (count > 0) {
+      buffer.append(tmp, static_cast<std::size_t>(count));
+      const auto pos = buffer.find('\n');
+      if (pos != std::string::npos) {
+        return buffer.substr(0, pos);
+      }
+      continue;
+    }
+    if (count == 0) {
+      return std::nullopt;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+      continue;
+    }
+    return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<std::string> send_openhd_control(const std::string& payload) {
+  if (!file_exists(kOpenHdControlSocketPath)) {
+    return std::nullopt;
+  }
+
+  const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0) {
+    return std::nullopt;
+  }
+
+  sockaddr_un addr{};
+  addr.sun_family = AF_UNIX;
+  std::strncpy(addr.sun_path, kOpenHdControlSocketPath,
+               sizeof(addr.sun_path) - 1);
+
+  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+    ::close(fd);
+    return std::nullopt;
+  }
+
+  const bool sent_ok = write_all(fd, payload);
+  if (!sent_ok) {
+    ::close(fd);
+    return std::nullopt;
+  }
+
+  auto response = read_line_with_timeout(fd, kOpenHdControlTimeout);
+  ::close(fd);
+  return response;
 }
 
 void append_cards_json(std::ostringstream& out,
@@ -907,6 +1014,79 @@ std::string handle_wifi_update(const std::string& line) {
   if (ok) {
     out << ",\"cards\":";
     append_cards_json(out, wifi_cards());
+  }
+  out << "}\n";
+  return out.str();
+}
+
+bool is_link_control_request(const std::string& line) {
+  auto type = extract_string_field(line, "type");
+  return type.has_value() && *type == "sysutil.link.control";
+}
+
+std::string handle_link_control_request(const std::string& line) {
+  const auto iface = extract_string_field(line, "interface");
+  const auto frequency = extract_int_field(line, "frequency_mhz");
+  const auto channel_width = extract_int_field(line, "channel_width_mhz");
+  const auto mcs_index = extract_int_field(line, "mcs_index");
+  const auto tx_power_mw = extract_int_field(line, "tx_power_mw");
+  const auto tx_power_index = extract_int_field(line, "tx_power_index");
+
+  bool has_value = false;
+  has_value = has_value || (iface.has_value() && !iface->empty());
+  has_value = has_value || frequency.has_value();
+  has_value = has_value || channel_width.has_value();
+  has_value = has_value || mcs_index.has_value();
+  has_value = has_value || tx_power_mw.has_value();
+  has_value = has_value || tx_power_index.has_value();
+
+  bool ok = false;
+  std::string message;
+
+  if (!has_value) {
+    ok = false;
+    message = "No RF values provided.";
+  } else {
+    std::ostringstream request;
+    request << "{\"type\":\"openhd.link.control\"";
+    if (iface && !iface->empty()) {
+      request << ",\"interface\":\"" << json_escape(*iface) << "\"";
+    }
+    if (frequency.has_value()) {
+      request << ",\"frequency_mhz\":" << *frequency;
+    }
+    if (channel_width.has_value()) {
+      request << ",\"channel_width_mhz\":" << *channel_width;
+    }
+    if (mcs_index.has_value()) {
+      request << ",\"mcs_index\":" << *mcs_index;
+    }
+    if (tx_power_mw.has_value()) {
+      request << ",\"tx_power_mw\":" << *tx_power_mw;
+    }
+    if (tx_power_index.has_value()) {
+      request << ",\"tx_power_index\":" << *tx_power_index;
+    }
+    request << "}\n";
+
+    const auto response = send_openhd_control(request.str());
+    if (!response) {
+      ok = false;
+      message = "OpenHD control socket not available.";
+    } else {
+      ok = extract_bool_field(*response, "ok").value_or(false);
+      message = extract_string_field(*response, "message").value_or("");
+      if (message.empty() && !ok) {
+        message = "OpenHD rejected the RF update.";
+      }
+    }
+  }
+
+  std::ostringstream out;
+  out << "{\"type\":\"sysutil.link.control.response\",\"ok\":"
+      << (ok ? "true" : "false");
+  if (!message.empty()) {
+    out << ",\"message\":\"" << json_escape(message) << "\"";
   }
   out << "}\n";
   return out.str();

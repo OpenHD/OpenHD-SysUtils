@@ -281,6 +281,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_link_control_request(line)) {
+                    const auto response = sysutil::handle_link_control_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_video_request(line)) {
                     const auto response = sysutil::handle_video_request(line);
                     if (gDebug) {

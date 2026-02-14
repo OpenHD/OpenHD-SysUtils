@@ -72,6 +72,12 @@ bool is_wifi_update_request(const std::string& line);
 // Handles Wi-Fi update requests and returns response JSON.
 std::string handle_wifi_update(const std::string& line);
 
+// Checks whether a request asks to control RF link settings.
+bool is_link_control_request(const std::string& line);
+
+// Handles RF link control requests and returns response JSON.
+std::string handle_link_control_request(const std::string& line);
+
 }  // namespace sysutil
 
 #endif  // SYSUTIL_WIFI_H
