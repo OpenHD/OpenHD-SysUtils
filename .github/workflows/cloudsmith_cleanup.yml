@@ -1,9 +1,8 @@
 name: Cloudsmith cleanup
 
 on:
-  push:
-  # schedule:
-  #   - cron: "33 3 * * *"
+  schedule:
+    - cron: "33 3 * * *"
   workflow_dispatch:
 
 jobs:
