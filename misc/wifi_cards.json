@@ -9,7 +9,7 @@
     {
       "vendor_id": "0x0BDA",
       "device_id": "0xA81A",
-      "name": "LB-Link 8812eu",
+      "name": "LB-Link BL-M8812EU2",
       "power_mode": "mw",
       "min_mw": 0,
       "max_mw": 1000,
@@ -18,6 +18,48 @@
         "low": 100,
         "mid": 500,
         "high": 1000
+      }
+    },
+     {
+      "vendor_id": "0x0BDA",
+      "device_id": "0x17D2",
+      "name": "ASUS AC56",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
+      }
+    },
+    {
+      "vendor_id": "0x0BDA",
+      "device_id": "0x8812",
+      "name": "Alfa AWUS036AC",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
+      }
+    },
+    {
+      "vendor_id": "0x2357",
+      "device_id": "0x0101",
+      "name": "TPlink t4u",
+      "power_mode": "powerindex",
+      "min_mw": 10,
+      "max_mw": 58,
+      "levels_mw": {
+        "lowest": 10,
+        "low": 26,
+        "mid": 42,
+        "high": 58
       }
     }
   ]
