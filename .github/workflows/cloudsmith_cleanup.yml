@@ -1,0 +1,169 @@
+name: Cloudsmith cleanup
+
+on:
+  schedule:
+    - cron: "33 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    permissions: {}
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      CLOUDSMITH_OWNER: openhd
+      CLOUDSMITH_REPO: dev-release-archive
+    steps:
+      - name: Install Cloudsmith CLI
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade cloudsmith-cli
+
+      - name: Delete unused packages
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timedelta, timezone
+          from typing import List
+
+          owner = os.environ.get("CLOUDSMITH_OWNER", "").strip()
+          api_key = os.environ.get("CLOUDSMITH_API_KEY", "").strip()
+          if not owner:
+            print("CLOUDSMITH_OWNER is not set.", file=sys.stderr)
+            sys.exit(2)
+          if not api_key:
+            print("CLOUDSMITH_API_KEY is not set.", file=sys.stderr)
+            sys.exit(2)
+
+          def run_json(cmd: List[str]) -> dict:
+            result = subprocess.run(
+              cmd,
+              check=True,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True,
+            )
+            try:
+              return json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+              print("Failed to parse JSON output from:", " ".join(cmd), file=sys.stderr)
+              print(result.stdout, file=sys.stderr)
+              raise exc
+
+          def pick_repo_slug(item: dict) -> str:
+            return (
+              item.get("slug")
+              or item.get("identifier")
+              or item.get("name")
+              or ""
+            )
+
+          def pick_pkg_slug(item: dict) -> str:
+            return (
+              item.get("slug")
+              or item.get("slug_perm")
+              or item.get("identifier")
+              or ""
+            )
+
+          def parse_time(value):
+            if not value or not isinstance(value, str):
+              return None
+            if value.endswith("Z"):
+              value = value[:-1] + "+00:00"
+            try:
+              return datetime.fromisoformat(value)
+            except ValueError:
+              return None
+
+          def uploaded_at(item: dict):
+            for key in ("uploaded_at", "uploaded", "created_at", "created", "date"):
+              ts = parse_time(item.get(key))
+              if ts:
+                return ts
+            return None
+
+          def never_downloaded(item: dict):
+            last_downloaded = parse_time(item.get("last_downloaded"))
+            if last_downloaded:
+              return False
+            for key in ("downloads", "downloads_total", "downloads_count", "download_count"):
+              if key in item and item.get(key) is not None:
+                try:
+                  return int(item.get(key)) == 0
+                except (TypeError, ValueError):
+                  return False
+            return None
+
+          cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+          repo_override = os.environ.get("CLOUDSMITH_REPO", "").strip()
+          if repo_override:
+            repos = [repo_override]
+          else:
+            repos: List[str] = []
+            repos_payload = run_json(
+              ["cloudsmith", "list", "repos", owner, "-F", "json", "--show-all"]
+            )
+            for item in repos_payload.get("data") or []:
+              slug = pick_repo_slug(item)
+              if slug:
+                repos.append(slug)
+
+          if not repos:
+            print(f"No repositories found for owner '{owner}'.")
+            sys.exit(0)
+
+          failures = []
+          for repo in repos:
+            print(f"Scanning {owner}/{repo} ...")
+            matched: List[str] = []
+            cmd_base = [
+              "cloudsmith",
+              "list",
+              "packages",
+              f"{owner}/{repo}",
+              "-F",
+              "json",
+            ]
+            payload = run_json(cmd_base + ["--show-all"])
+            for item in payload.get("data") or []:
+              slug = pick_pkg_slug(item)
+              if not slug:
+                continue
+              uploaded = uploaded_at(item)
+              if not uploaded:
+                continue
+              if uploaded > cutoff:
+                continue
+              download_state = never_downloaded(item)
+              if download_state is True:
+                matched.append(slug)
+
+            if not matched:
+              print(f"  No matching packages.")
+              continue
+
+            print(f"  Deleting {len(matched)} package(s).")
+            for slug in matched:
+              package_ref = f"{owner}/{repo}/{slug}"
+              try:
+                subprocess.run(
+                  ["cloudsmith", "delete", package_ref],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                )
+                print(f"    Deleted {package_ref}")
+              except subprocess.CalledProcessError as exc:
+                failures.append(package_ref)
+                print(f"    Failed to delete {package_ref}:", exc.stderr, file=sys.stderr)
+
+          if failures:
+            print("Deletion failures:", ", ".join(failures), file=sys.stderr)
+            sys.exit(1)
+          PY

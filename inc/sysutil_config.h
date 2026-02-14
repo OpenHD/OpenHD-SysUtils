@@ -50,6 +50,37 @@ struct SysutilConfig {
   std::optional<std::string> init_system;
   // Detected shell type (e.g. busybox or bash).
   std::optional<std::string> shell;
+  // WiFi hardware configuration.
+  std::optional<bool> wifi_enable_autodetect;
+  std::optional<std::string> wifi_wb_link_cards;
+  std::optional<std::string> wifi_hotspot_card;
+  std::optional<bool> wifi_monitor_card_emulate;
+  std::optional<bool> wifi_force_no_link_but_hotspot;
+  std::optional<bool> wifi_local_network_enable;
+  std::optional<std::string> wifi_local_network_ssid;
+  std::optional<std::string> wifi_local_network_password;
+  // Networking configuration.
+  std::optional<std::string> nw_ethernet_card;
+  std::optional<std::string> nw_manual_forwarding_ips;
+  std::optional<bool> nw_forward_to_localhost_58xx;
+  // Ethernet link configuration.
+  std::optional<std::string> ground_unit_ip;
+  std::optional<std::string> air_unit_ip;
+  std::optional<int> video_port;
+  std::optional<int> telemetry_port;
+  // Microhard link configuration.
+  std::optional<bool> disable_microhard_detection;
+  std::optional<bool> force_microhard;
+  std::optional<std::string> microhard_username;
+  std::optional<std::string> microhard_password;
+  std::optional<std::string> microhard_ip_air;
+  std::optional<std::string> microhard_ip_ground;
+  std::optional<std::string> microhard_ip_range;
+  std::optional<int> microhard_video_port;
+  std::optional<int> microhard_telemetry_port;
+  // Generic configuration.
+  std::optional<bool> gen_enable_last_known_position;
+  std::optional<int> gen_rf_metrics_level;
 };
 
 // Result of attempting to load the config file.
