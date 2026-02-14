@@ -1031,6 +1031,7 @@ std::string handle_link_control_request(const std::string& line) {
   const auto mcs_index = extract_int_field(line, "mcs_index");
   const auto tx_power_mw = extract_int_field(line, "tx_power_mw");
   const auto tx_power_index = extract_int_field(line, "tx_power_index");
+  const auto power_level = extract_string_field(line, "power_level");
 
   bool has_value = false;
   has_value = has_value || (iface.has_value() && !iface->empty());
@@ -1039,6 +1040,7 @@ std::string handle_link_control_request(const std::string& line) {
   has_value = has_value || mcs_index.has_value();
   has_value = has_value || tx_power_mw.has_value();
   has_value = has_value || tx_power_index.has_value();
+  has_value = has_value || (power_level.has_value() && !power_level->empty());
 
   bool ok = false;
   std::string message;
@@ -1066,6 +1068,12 @@ std::string handle_link_control_request(const std::string& line) {
     }
     if (tx_power_index.has_value()) {
       request << ",\"tx_power_index\":" << *tx_power_index;
+    }
+    if (power_level.has_value()) {
+      const auto trimmed = trim_copy(*power_level);
+      if (!trimmed.empty()) {
+        request << ",\"power_level\":\"" << json_escape(trimmed) << "\"";
+      }
     }
     request << "}\n";
 
