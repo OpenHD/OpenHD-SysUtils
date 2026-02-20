@@ -1058,6 +1058,9 @@ std::string handle_link_control_request(const std::string& line) {
   if (!has_value) {
     ok = false;
     message = "No RF values provided.";
+  } else if (channel_width.has_value() && *channel_width == 40) {
+    ok = false;
+    message = "40 MHz channel width is disabled.";
   } else {
     std::ostringstream request;
     request << "{\"type\":\"openhd.link.control\"";
