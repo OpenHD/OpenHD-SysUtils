@@ -11,10 +11,10 @@
       "device_id": "0xA81A",
       "name": "LB-Link BL-M8812EU2",
       "power_mode": "mw",
-      "min_mw": 0,
+      "min_mw": 25,
       "max_mw": 1000,
       "levels_mw": {
-        "lowest": 0,
+        "lowest": 25,
         "low": 100,
         "mid": 500,
         "high": 1000

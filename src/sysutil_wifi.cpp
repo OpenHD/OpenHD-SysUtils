@@ -395,6 +395,62 @@ std::vector<std::string> extract_array_objects(const std::string& content,
   return objects;
 }
 
+std::optional<std::string> extract_object_field(const std::string& content,
+                                                const std::string& key) {
+  const std::string needle = "\"" + key + "\"";
+  auto key_pos = content.find(needle);
+  if (key_pos == std::string::npos) {
+    return std::nullopt;
+  }
+  auto colon_pos = content.find(':', key_pos + needle.size());
+  if (colon_pos == std::string::npos) {
+    return std::nullopt;
+  }
+  auto obj_pos = content.find('{', colon_pos + 1);
+  if (obj_pos == std::string::npos) {
+    return std::nullopt;
+  }
+
+  bool in_string = false;
+  bool escape = false;
+  int depth = 0;
+  std::size_t obj_start = std::string::npos;
+  for (std::size_t pos = obj_pos; pos < content.size(); ++pos) {
+    char ch = content[pos];
+    if (in_string) {
+      if (escape) {
+        escape = false;
+      } else if (ch == '\\') {
+        escape = true;
+      } else if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      continue;
+    }
+    if (ch == '{') {
+      if (depth == 0) {
+        obj_start = pos;
+      }
+      ++depth;
+      continue;
+    }
+    if (ch == '}') {
+      if (depth > 0) {
+        --depth;
+        if (depth == 0 && obj_start != std::string::npos) {
+          return content.substr(obj_start, pos - obj_start + 1);
+        }
+      }
+      continue;
+    }
+  }
+  return std::nullopt;
+}
+
 std::string to_string_if(int value) {
   if (value <= 0) {
     return "";
@@ -450,23 +506,53 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
     profile.mid_mw = extract_int_field(object, "mid").value_or(0);
     profile.high_mw = extract_int_field(object, "high").value_or(0);
 
-    if (profile.min_mw <= 0 && profile.lowest_mw > 0) {
-      profile.min_mw = profile.lowest_mw;
+    if (auto levels = extract_object_field(object, "levels_mw")) {
+      if (profile.lowest_mw <= 0) {
+        profile.lowest_mw = extract_int_field(*levels, "lowest").value_or(0);
+      }
+      if (profile.low_mw <= 0) {
+        profile.low_mw = extract_int_field(*levels, "low").value_or(0);
+      }
+      if (profile.mid_mw <= 0) {
+        profile.mid_mw = extract_int_field(*levels, "mid").value_or(0);
+      }
+      if (profile.high_mw <= 0) {
+        profile.high_mw = extract_int_field(*levels, "high").value_or(0);
+      }
     }
-    if (profile.max_mw <= 0 && profile.high_mw > 0) {
-      profile.max_mw = profile.high_mw;
+
+    auto first_positive = [](std::initializer_list<int> values) {
+      for (int value : values) {
+        if (value > 0) {
+          return value;
+        }
+      }
+      return 0;
+    };
+
+    if (profile.min_mw <= 0) {
+      profile.min_mw = first_positive({profile.lowest_mw, profile.low_mw,
+                                       profile.mid_mw, profile.high_mw});
     }
-    if (profile.lowest_mw <= 0 && profile.min_mw > 0) {
-      profile.lowest_mw = profile.min_mw;
+    if (profile.max_mw <= 0) {
+      profile.max_mw = first_positive({profile.high_mw, profile.mid_mw,
+                                       profile.low_mw, profile.lowest_mw});
     }
-    if (profile.low_mw <= 0 && profile.lowest_mw > 0) {
-      profile.low_mw = profile.lowest_mw;
+    if (profile.lowest_mw <= 0) {
+      profile.lowest_mw = first_positive(
+          {profile.low_mw, profile.mid_mw, profile.high_mw, profile.min_mw});
     }
-    if (profile.mid_mw <= 0 && profile.low_mw > 0) {
-      profile.mid_mw = profile.low_mw;
+    if (profile.low_mw <= 0) {
+      profile.low_mw = first_positive(
+          {profile.lowest_mw, profile.mid_mw, profile.high_mw, profile.min_mw});
     }
-    if (profile.high_mw <= 0 && profile.max_mw > 0) {
-      profile.high_mw = profile.max_mw;
+    if (profile.mid_mw <= 0) {
+      profile.mid_mw =
+          first_positive({profile.low_mw, profile.high_mw, profile.max_mw});
+    }
+    if (profile.high_mw <= 0) {
+      profile.high_mw = first_positive(
+          {profile.max_mw, profile.mid_mw, profile.low_mw, profile.lowest_mw});
     }
 
     profiles.push_back(profile);
