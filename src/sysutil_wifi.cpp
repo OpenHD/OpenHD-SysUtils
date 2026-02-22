@@ -399,6 +399,7 @@ std::string to_string_if(int value) {
 }
 
 std::string normalize_id(std::string value);
+std::vector<WifiCardProfile> default_wifi_card_profiles();
 
 std::string normalize_chipset(std::string value) {
   return to_upper(trim_copy(value));
@@ -408,11 +409,11 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
   std::vector<WifiCardProfile> profiles;
   auto content = read_file(kWifiCardsPath);
   if (!content) {
-    return profiles;
+    return default_wifi_card_profiles();
   }
   auto objects = extract_array_objects(*content, "cards");
   if (objects.empty()) {
-    return profiles;
+    return default_wifi_card_profiles();
   }
 
   for (const auto& object : objects) {
@@ -454,6 +455,9 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
 
     profiles.push_back(profile);
   }
+  if (profiles.empty()) {
+    return default_wifi_card_profiles();
+  }
   return profiles;
 }
 
@@ -462,17 +466,27 @@ const WifiCardProfile* find_wifi_profile(
     const std::string& vendor_id,
     const std::string& device_id,
     const std::string& chipset) {
+  const WifiCardProfile* vendor_device_match = nullptr;
+  const WifiCardProfile* generic_match = nullptr;
   for (const auto& profile : profiles) {
     if (equal_after_uppercase(profile.vendor_id, vendor_id) &&
         equal_after_uppercase(profile.device_id, device_id)) {
-      if (!profile.chipset.empty() &&
-          !equal_after_uppercase(profile.chipset, chipset)) {
-        continue;
+      if (profile.chipset.empty()) {
+        if (!generic_match) {
+          generic_match = &profile;
+        }
+      } else if (equal_after_uppercase(profile.chipset, chipset)) {
+        return &profile;
       }
-      return &profile;
+      if (!vendor_device_match) {
+        vendor_device_match = &profile;
+      }
     }
   }
-  return nullptr;
+  if (generic_match) {
+    return generic_match;
+  }
+  return vendor_device_match;
 }
 
 std::unordered_map<std::string, WifiTxPowerOverride> load_tx_power_overrides() {
@@ -647,6 +661,34 @@ std::string normalize_id(std::string value) {
     return "0x" + to_upper(value.substr(2));
   }
   return "0x" + to_upper(value);
+}
+
+std::vector<WifiCardProfile> default_wifi_card_profiles() {
+  std::vector<WifiCardProfile> profiles;
+
+  WifiCardProfile rpi{};
+  rpi.vendor_id = normalize_id("0x02D0");
+  rpi.device_id = normalize_id("0xA9A6");
+  rpi.chipset = normalize_chipset("BROADCOM");
+  rpi.name = "Raspberry Internal";
+  rpi.power_mode = "FIXED";
+  profiles.push_back(rpi);
+
+  WifiCardProfile lb{};
+  lb.vendor_id = normalize_id("0x0BDA");
+  lb.device_id = normalize_id("0xA81A");
+  lb.chipset = normalize_chipset("OPENHD_RTL_88X2EU");
+  lb.name = "LB-Link 8812eu";
+  lb.power_mode = "MW";
+  lb.min_mw = 0;
+  lb.max_mw = 1000;
+  lb.lowest_mw = 0;
+  lb.low_mw = 100;
+  lb.mid_mw = 500;
+  lb.high_mw = 1000;
+  profiles.push_back(lb);
+
+  return profiles;
 }
 
 void fill_vendor_device_from_uevent(const std::string& uevent,
