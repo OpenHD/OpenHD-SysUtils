@@ -57,6 +57,12 @@ struct WifiCardInfo {
 // Initializes cached Wi-Fi info (loading overrides and detecting cards).
 void init_wifi_info();
 
+// Refreshes cached Wi-Fi info (reloads overrides and re-detects cards).
+void refresh_wifi_info();
+
+// Returns true when at least one OpenHD wifibroadcast card is detected.
+bool has_openhd_wifibroadcast_cards();
+
 // Returns cached Wi-Fi card info (initializes if needed).
 const std::vector<WifiCardInfo>& wifi_cards();
 

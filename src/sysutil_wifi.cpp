@@ -741,6 +741,14 @@ std::string driver_to_type(const std::string& driver_name) {
   return "UNKNOWN";
 }
 
+bool is_openhd_wifibroadcast_type(const std::string& type_name) {
+  auto type_upper = to_upper(trim_copy(type_name));
+  if (type_upper.empty()) {
+    return false;
+  }
+  return type_upper.rfind("OPENHD_", 0) == 0;
+}
+
 std::optional<std::string> extract_driver_name(const std::string& uevent) {
   const std::regex driver_regex{"DRIVER=([\\w]+)"};
   std::smatch result;
@@ -1094,6 +1102,21 @@ void refresh_wifi_info() {
 
 void init_wifi_info() {
   refresh_wifi_info();
+}
+
+bool has_openhd_wifibroadcast_cards() {
+  if (!g_wifi_initialized) {
+    refresh_wifi_info();
+  }
+  for (const auto& card : g_wifi_cards) {
+    if (card.disabled) {
+      continue;
+    }
+    if (is_openhd_wifibroadcast_type(card.effective_type)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const std::vector<WifiCardInfo>& wifi_cards() {

@@ -6,6 +6,7 @@
 #include <csignal>
 #include <string>
 #include <string_view>
+#include <chrono>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -393,6 +394,9 @@ int main(int argc, char* argv[]) {
     sysutil::init_debug_info();
     sysutil::apply_hostname_if_enabled();
     sysutil::init_wifi_info();
+    bool wifi_retry_active = !sysutil::has_openhd_wifibroadcast_cards();
+    auto next_wifi_retry = std::chrono::steady_clock::now() +
+                           std::chrono::seconds(5);
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {
@@ -446,6 +450,15 @@ int main(int argc, char* argv[]) {
                 if (!keepOpen || (pfd.revents & (POLLERR | POLLHUP))) {
                     closeClient(pfd.fd, clientBuffers);
                 }
+            }
+        }
+
+        if (wifi_retry_active) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= next_wifi_retry) {
+                sysutil::refresh_wifi_info();
+                wifi_retry_active = !sysutil::has_openhd_wifibroadcast_cards();
+                next_wifi_retry = now + std::chrono::seconds(5);
             }
         }
     }
