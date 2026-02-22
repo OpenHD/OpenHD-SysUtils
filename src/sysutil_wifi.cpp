@@ -66,6 +66,9 @@ struct WifiTxPowerOverride {
   std::string tx_power_low;
   std::string card_name;
   std::string power_level;
+  std::string profile_vendor_id;
+  std::string profile_device_id;
+  std::string profile_chipset;
 };
 
 struct WifiCardProfile {
@@ -327,7 +330,8 @@ bool write_overrides(const std::unordered_map<std::string, std::string>& data) {
 bool has_tx_power_values(const WifiTxPowerOverride& entry) {
   return !entry.tx_power.empty() || !entry.tx_power_high.empty() ||
          !entry.tx_power_low.empty() || !entry.card_name.empty() ||
-         !entry.power_level.empty();
+         !entry.power_level.empty() || !entry.profile_vendor_id.empty() ||
+         !entry.profile_device_id.empty() || !entry.profile_chipset.empty();
 }
 
 std::vector<std::string> extract_array_objects(const std::string& content,
@@ -531,6 +535,12 @@ std::unordered_map<std::string, WifiTxPowerOverride> load_tx_power_overrides() {
       entry.card_name = value;
     } else if (field_upper == "POWER_LEVEL") {
       entry.power_level = value;
+    } else if (field_upper == "PROFILE_VENDOR_ID") {
+      entry.profile_vendor_id = normalize_id(value);
+    } else if (field_upper == "PROFILE_DEVICE_ID") {
+      entry.profile_device_id = normalize_id(value);
+    } else if (field_upper == "PROFILE_CHIPSET") {
+      entry.profile_chipset = normalize_chipset(value);
     }
   }
   return overrides;
@@ -560,6 +570,15 @@ bool write_tx_power_overrides(
     }
     if (!values.power_level.empty()) {
       file << iface << ".power_level=" << values.power_level << "\n";
+    }
+    if (!values.profile_vendor_id.empty()) {
+      file << iface << ".profile_vendor_id=" << values.profile_vendor_id << "\n";
+    }
+    if (!values.profile_device_id.empty()) {
+      file << iface << ".profile_device_id=" << values.profile_device_id << "\n";
+    }
+    if (!values.profile_chipset.empty()) {
+      file << iface << ".profile_chipset=" << values.profile_chipset << "\n";
     }
     if (!values.tx_power.empty()) {
       file << iface << ".tx_power=" << values.tx_power << "\n";
@@ -857,6 +876,32 @@ WifiCardInfo build_wifi_card(
 
   const auto* profile = find_wifi_profile(
       profiles, card.vendor_id, card.device_id, card.detected_type);
+  auto tx_it = tx_overrides.find(interface_name);
+  if (tx_it != tx_overrides.end()) {
+    const auto& override_profile = tx_it->second;
+    if (!override_profile.profile_vendor_id.empty() &&
+        !override_profile.profile_device_id.empty()) {
+      const auto& override_chipset =
+          override_profile.profile_chipset.empty()
+              ? card.detected_type
+              : override_profile.profile_chipset;
+      const auto* override_match = find_wifi_profile(
+          profiles,
+          override_profile.profile_vendor_id,
+          override_profile.profile_device_id,
+          override_chipset);
+      if (!override_match) {
+        override_match = find_wifi_profile(
+            profiles,
+            override_profile.profile_vendor_id,
+            override_profile.profile_device_id,
+            "");
+      }
+      if (override_match) {
+        profile = override_match;
+      }
+    }
+  }
   const bool profile_fixed =
       profile && to_upper(profile->power_mode) == "FIXED";
   if (profile) {
@@ -872,7 +917,6 @@ WifiCardInfo build_wifi_card(
     card.power_max = to_string_if(profile->max_mw);
   }
 
-  auto tx_it = tx_overrides.find(interface_name);
   if (tx_it != tx_overrides.end()) {
     card.tx_power = tx_it->second.tx_power;
     card.tx_power_high = tx_it->second.tx_power_high;
@@ -989,6 +1033,12 @@ std::string handle_wifi_update(const std::string& line) {
   const auto tx_power_low = extract_string_field(line, "tx_power_low");
   const auto card_name = extract_string_field(line, "card_name");
   const auto power_level = extract_string_field(line, "power_level");
+  const auto profile_vendor_id =
+      extract_string_field(line, "profile_vendor_id");
+  const auto profile_device_id =
+      extract_string_field(line, "profile_device_id");
+  const auto profile_chipset =
+      extract_string_field(line, "profile_chipset");
 
   bool ok = true;
   auto overrides = load_overrides();
@@ -1010,7 +1060,8 @@ std::string handle_wifi_update(const std::string& line) {
 
       if (tx_power.has_value() || tx_power_high.has_value() ||
           tx_power_low.has_value() || card_name.has_value() ||
-          power_level.has_value()) {
+          power_level.has_value() || profile_vendor_id.has_value() ||
+          profile_device_id.has_value() || profile_chipset.has_value()) {
         auto& entry = tx_overrides[*iface];
         if (tx_power.has_value()) {
           entry.tx_power = *tx_power;
@@ -1034,6 +1085,22 @@ std::string handle_wifi_update(const std::string& line) {
           entry.tx_power.clear();
           entry.tx_power_high.clear();
           entry.tx_power_low.clear();
+        }
+        if (profile_vendor_id.has_value() ||
+            profile_device_id.has_value() ||
+            profile_chipset.has_value()) {
+          const auto vendor_value = profile_vendor_id.value_or("");
+          const auto device_value = profile_device_id.value_or("");
+          const auto chipset_value = profile_chipset.value_or("");
+          if (vendor_value.empty() || device_value.empty()) {
+            entry.profile_vendor_id.clear();
+            entry.profile_device_id.clear();
+            entry.profile_chipset.clear();
+          } else {
+            entry.profile_vendor_id = normalize_id(vendor_value);
+            entry.profile_device_id = normalize_id(device_value);
+            entry.profile_chipset = normalize_chipset(chipset_value);
+          }
         }
         if (!has_tx_power_values(entry)) {
           tx_overrides.erase(*iface);
