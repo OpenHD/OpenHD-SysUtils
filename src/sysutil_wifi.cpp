@@ -456,6 +456,18 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
     if (profile.max_mw <= 0 && profile.high_mw > 0) {
       profile.max_mw = profile.high_mw;
     }
+    if (profile.lowest_mw <= 0 && profile.min_mw > 0) {
+      profile.lowest_mw = profile.min_mw;
+    }
+    if (profile.low_mw <= 0 && profile.lowest_mw > 0) {
+      profile.low_mw = profile.lowest_mw;
+    }
+    if (profile.mid_mw <= 0 && profile.low_mw > 0) {
+      profile.mid_mw = profile.low_mw;
+    }
+    if (profile.high_mw <= 0 && profile.max_mw > 0) {
+      profile.high_mw = profile.max_mw;
+    }
 
     profiles.push_back(profile);
   }
@@ -699,9 +711,9 @@ std::vector<WifiCardProfile> default_wifi_card_profiles() {
   lb.chipset = normalize_chipset("OPENHD_RTL_88X2EU");
   lb.name = "LB-Link 8812eu";
   lb.power_mode = "MW";
-  lb.min_mw = 0;
+  lb.min_mw = 25;
   lb.max_mw = 1000;
-  lb.lowest_mw = 0;
+  lb.lowest_mw = 25;
   lb.low_mw = 100;
   lb.mid_mw = 500;
   lb.high_mw = 1000;
