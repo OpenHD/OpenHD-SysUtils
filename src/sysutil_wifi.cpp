@@ -71,6 +71,7 @@ struct WifiTxPowerOverride {
 struct WifiCardProfile {
   std::string vendor_id;
   std::string device_id;
+  std::string chipset;
   std::string name;
   std::string power_mode;
   int min_mw = 0;
@@ -399,6 +400,10 @@ std::string to_string_if(int value) {
 
 std::string normalize_id(std::string value);
 
+std::string normalize_chipset(std::string value) {
+  return to_upper(trim_copy(value));
+}
+
 std::vector<WifiCardProfile> load_wifi_card_profiles() {
   std::vector<WifiCardProfile> profiles;
   auto content = read_file(kWifiCardsPath);
@@ -419,6 +424,8 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
     WifiCardProfile profile{};
     profile.vendor_id = normalize_id(*vendor);
     profile.device_id = normalize_id(*device);
+    profile.chipset =
+        normalize_chipset(extract_string_field(object, "chipset").value_or(""));
     profile.name = extract_string_field(object, "name").value_or("");
     profile.power_mode = to_upper(extract_string_field(object, "power_mode").value_or("mw"));
     if (profile.power_mode == "FIXED") {
@@ -453,10 +460,15 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
 const WifiCardProfile* find_wifi_profile(
     const std::vector<WifiCardProfile>& profiles,
     const std::string& vendor_id,
-    const std::string& device_id) {
+    const std::string& device_id,
+    const std::string& chipset) {
   for (const auto& profile : profiles) {
     if (equal_after_uppercase(profile.vendor_id, vendor_id) &&
         equal_after_uppercase(profile.device_id, device_id)) {
+      if (!profile.chipset.empty() &&
+          !equal_after_uppercase(profile.chipset, chipset)) {
+        continue;
+      }
       return &profile;
     }
   }
@@ -801,8 +813,8 @@ WifiCardInfo build_wifi_card(
     card.effective_type = card.detected_type;
   }
 
-  const auto* profile =
-      find_wifi_profile(profiles, card.vendor_id, card.device_id);
+  const auto* profile = find_wifi_profile(
+      profiles, card.vendor_id, card.device_id, card.detected_type);
   const bool profile_fixed =
       profile && to_upper(profile->power_mode) == "FIXED";
   if (profile) {
