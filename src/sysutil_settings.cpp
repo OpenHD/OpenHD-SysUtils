@@ -55,6 +55,7 @@ constexpr const char* kDefaultMicrohardUsername = "admin";
 constexpr const char* kDefaultMicrohardPassword = "qwertz1";
 constexpr int kDefaultMicrohardVideoPort = 5910;
 constexpr int kDefaultMicrohardTelemetryPort = 5920;
+constexpr bool kRecordModeEnabled = false;
 
 bool file_exists(const char* path) {
   std::error_code ec;
@@ -71,7 +72,10 @@ void remove_file_if_exists(const char* path) {
 std::string normalize_run_mode(std::string mode) {
   std::transform(mode.begin(), mode.end(), mode.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (mode == "air" || mode == "ground" || mode == "record") {
+  if (mode == "record") {
+    return kRecordModeEnabled ? mode : "air";
+  }
+  if (mode == "air" || mode == "ground") {
     return mode;
   }
   return "";
@@ -187,7 +191,7 @@ void sync_settings_from_files() {
   const bool has_ground = file_exists(kGroundFile);
   if (has_record || has_air || has_ground) {
     if (has_record) {
-      config.run_mode = "record";
+      config.run_mode = kRecordModeEnabled ? "record" : "air";
     } else {
       config.run_mode = has_air && !has_ground ? "air" : "ground";
     }
