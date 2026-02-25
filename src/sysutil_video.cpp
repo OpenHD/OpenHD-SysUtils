@@ -23,6 +23,7 @@
 
 #include "sysutil_video.h"
 #include "sysutil_config.h"
+#include "sysutil_debug.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
@@ -135,6 +136,18 @@ bool is_rockchip_platform() {
 bool has_systemctl() {
     return std::filesystem::exists("/bin/systemctl") ||
            std::filesystem::exists("/usr/bin/systemctl");
+}
+
+void apply_openhd_service_disable() {
+    if (!has_systemctl()) {
+        set_status("sysutils.services", "Service status",
+                   "systemctl missing; cannot disable OpenHD service", 2);
+        return;
+    }
+    run_cmd("systemctl stop openhd.service openhd_rpi.service openhd_mod.service");
+    run_cmd("systemctl disable openhd.service openhd_rpi.service openhd_mod.service");
+    set_status("sysutils.services", "Service status",
+               "OpenHD service disabled via sysutils config", 1);
 }
 
 bool ensure_qopenhd_getty_dropin() {
@@ -390,6 +403,15 @@ void start_openhd_services_if_needed() {
     const bool systemd_ok = has_systemctl();
     const bool ground = is_ground_mode();
     const bool rockchip = is_rockchip_platform();
+
+    SysutilConfig config;
+    if (load_sysutil_config(config) == ConfigLoadResult::Loaded) {
+        (void)apply_openhd_debug_marker(config.debug_enabled, false);
+        if (config.disable_openhd_service.value_or(false)) {
+            apply_openhd_service_disable();
+            return;
+        }
+    }
 
     if (!systemd_ok) {
         set_status("sysutils.services", "Service status",

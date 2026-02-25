@@ -392,6 +392,7 @@ int main(int argc, char* argv[]) {
 
     sysutil::init_platform_info();
     sysutil::init_debug_info();
+    gDebug = gDebug || sysutil::debug_enabled();
     sysutil::apply_hostname_if_enabled();
     sysutil::init_wifi_info();
     bool wifi_retry_active = !sysutil::has_openhd_wifibroadcast_cards();

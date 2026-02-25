@@ -81,6 +81,8 @@ struct SysutilConfig {
   // Generic configuration.
   std::optional<bool> gen_enable_last_known_position;
   std::optional<int> gen_rf_metrics_level;
+  // Service control.
+  std::optional<bool> disable_openhd_service;
 };
 
 // Result of attempting to load the config file.

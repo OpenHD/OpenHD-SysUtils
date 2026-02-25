@@ -24,6 +24,7 @@
 #ifndef SYSUTIL_DEBUG_H
 #define SYSUTIL_DEBUG_H
 
+#include <optional>
 #include <string>
 
 namespace sysutil {
@@ -40,6 +41,9 @@ std::string build_debug_response();
 bool is_debug_update(const std::string& line);
 // Applies a debug update request and returns a response payload.
 std::string handle_debug_update(const std::string& line);
+// Syncs the OpenHD debug marker and optionally restarts OpenHD services.
+bool apply_openhd_debug_marker(const std::optional<bool>& enabled,
+                               bool restart_services);
 
 }  // namespace sysutil
 

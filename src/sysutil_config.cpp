@@ -138,6 +138,8 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
       extract_bool_field(content, "gen_enable_last_known_position");
   config.gen_rf_metrics_level =
       extract_int_field(content, "gen_rf_metrics_level");
+  config.disable_openhd_service =
+      extract_bool_field(content, "disable_openhd_service");
   return ConfigLoadResult::Loaded;
 }
 
@@ -237,6 +239,7 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_bool("gen_enable_last_known_position",
              config.gen_enable_last_known_position);
   write_int("gen_rf_metrics_level", config.gen_rf_metrics_level);
+  write_bool("disable_openhd_service", config.disable_openhd_service);
 
   file << "\n}\n";
   return static_cast<bool>(file);

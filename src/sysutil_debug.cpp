@@ -24,8 +24,10 @@
 #include "sysutil_debug.h"
 
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <sstream>
+#include <cstdlib>
 
 #include "sysutil_config.h"
 #include "sysutil_protocol.h"
@@ -36,8 +38,9 @@ namespace {
 // Legacy debug.txt locations that enable debug mode once.
 constexpr const char* kDebugFilePaths[] = {
     "/boot/openhd/debug.txt",
-    "/usr/local/share/openhd/debug.txt",
 };
+// Persistent OpenHD debug marker for log verbosity.
+constexpr const char* kOpenhdDebugMarker = "/usr/local/share/openhd/debug.txt";
 
 // Cached debug state for this process.
 std::optional<bool> g_debug_enabled;
@@ -57,6 +60,39 @@ bool remove_file(const std::string& path) {
   return std::filesystem::remove(path, ec);
 }
 
+bool has_systemctl() {
+  return std::filesystem::exists("/bin/systemctl") ||
+         std::filesystem::exists("/usr/bin/systemctl");
+}
+
+bool run_cmd(const std::string& cmd) {
+  return std::system(cmd.c_str()) == 0;
+}
+
+bool touch_file(const std::string& path) {
+  std::error_code ec;
+  auto parent = std::filesystem::path(path).parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+  }
+  if (ec) {
+    return false;
+  }
+  if (std::filesystem::exists(path, ec)) {
+    return true;
+  }
+  std::ofstream file(path);
+  return static_cast<bool>(file);
+}
+
+void restart_openhd_services_if_needed() {
+  if (!has_systemctl()) {
+    return;
+  }
+  (void)run_cmd("systemctl try-restart openhd.service openhd_rpi.service "
+                "openhd_mod.service openhd-x20.service");
+}
+
 }  // namespace
 
 // Initializes debug state from config and debug.txt triggers.
@@ -73,12 +109,19 @@ void init_debug_info() {
     g_debug_enabled = false;
   }
 
+  bool debug_marker_seen = false;
   for (const auto* path : kDebugFilePaths) {
     if (!file_exists(path)) {
       continue;
     }
-    g_debug_enabled = true;
+    debug_marker_seen = true;
     (void)remove_file(path);
+  }
+  if (file_exists(kOpenhdDebugMarker)) {
+    debug_marker_seen = true;
+  }
+  if (debug_marker_seen) {
+    g_debug_enabled = true;
     SysutilConfig updated_config;
     const auto load_result = load_sysutil_config(updated_config);
     if (load_result != ConfigLoadResult::Error) {
@@ -140,6 +183,8 @@ std::string handle_debug_update(const std::string& line) {
   const bool ok = write_sysutil_config(config);
   if (ok) {
     g_debug_enabled = *requested;
+    (void)apply_openhd_debug_marker(requested,
+                                    !config.disable_openhd_service.value_or(false));
   }
 
   std::ostringstream out;
@@ -147,6 +192,25 @@ std::string handle_debug_update(const std::string& line) {
       << (ok ? "true" : "false")
       << ",\"debug\":" << (*requested ? "true" : "false") << "}\n";
   return out.str();
+}
+
+bool apply_openhd_debug_marker(const std::optional<bool>& enabled,
+                               bool restart_services) {
+  if (!enabled.has_value()) {
+    return true;
+  }
+  const bool want_debug = *enabled;
+  bool ok = true;
+  if (want_debug) {
+    ok = touch_file(kOpenhdDebugMarker);
+  } else {
+    ok = remove_file(kOpenhdDebugMarker);
+  }
+  g_debug_enabled = want_debug;
+  if (restart_services) {
+    restart_openhd_services_if_needed();
+  }
+  return ok;
 }
 
 }  // namespace sysutil

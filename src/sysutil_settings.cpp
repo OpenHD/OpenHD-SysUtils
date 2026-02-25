@@ -34,6 +34,7 @@
 
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
+#include "sysutil_debug.h"
 #include "sysutil_hostname.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
@@ -175,6 +176,23 @@ void sync_settings_from_files() {
         }
       }
 
+      if (auto disable_openhd =
+              extract_bool_field(content, "disable_openhd_service");
+          disable_openhd.has_value()) {
+        config.disable_openhd_service = *disable_openhd;
+        changed = true;
+      }
+      if (auto debug = extract_bool_field(content, "debug");
+          debug.has_value()) {
+        config.debug_enabled = *debug;
+        changed = true;
+      } else if (auto debug_enabled =
+                     extract_bool_field(content, "debug_enabled");
+                 debug_enabled.has_value()) {
+        config.debug_enabled = *debug_enabled;
+        changed = true;
+      }
+
       // sbc field is currently ignored as platform detection handles it.
     }
     remove_file_if_exists(json_path.c_str());
@@ -283,6 +301,8 @@ std::string build_settings_response() {
   const bool gen_enable_last_known_position =
       config.gen_enable_last_known_position.value_or(false);
   const int gen_rf_metrics_level = config.gen_rf_metrics_level.value_or(0);
+  const bool disable_openhd_service =
+      config.disable_openhd_service.value_or(false);
 
   std::ostringstream out;
   out << "{\"type\":\"sysutil.settings.response\",\"ok\":true"
@@ -328,7 +348,9 @@ std::string build_settings_response() {
       << ",\"microhard_telemetry_port\":" << microhard_telemetry_port
       << ",\"gen_enable_last_known_position\":"
       << (gen_enable_last_known_position ? "true" : "false")
-      << ",\"gen_rf_metrics_level\":" << gen_rf_metrics_level << "}\n";
+      << ",\"gen_rf_metrics_level\":" << gen_rf_metrics_level
+      << ",\"disable_openhd_service\":"
+      << (disable_openhd_service ? "true" : "false") << "}\n";
   return out.str();
 }
 
@@ -341,6 +363,7 @@ std::string handle_settings_update(const std::string& line) {
 
   bool changed = false;
   bool hostname_related_change = false;
+  bool debug_changed = false;
   if (auto reset_requested = extract_bool_field(line, "reset_requested");
       reset_requested.has_value()) {
     config.reset_requested = *reset_requested;
@@ -513,10 +536,32 @@ std::string handle_settings_update(const std::string& line) {
     config.gen_rf_metrics_level = *gen_rf_metrics_level;
     changed = true;
   }
+  if (auto disable_openhd_service =
+          extract_bool_field(line, "disable_openhd_service");
+      disable_openhd_service.has_value()) {
+    config.disable_openhd_service = *disable_openhd_service;
+    changed = true;
+  }
+  if (auto debug = extract_bool_field(line, "debug"); debug.has_value()) {
+    config.debug_enabled = *debug;
+    changed = true;
+    debug_changed = true;
+  } else if (auto debug_enabled =
+                 extract_bool_field(line, "debug_enabled");
+             debug_enabled.has_value()) {
+    config.debug_enabled = *debug_enabled;
+    changed = true;
+    debug_changed = true;
+  }
 
   bool ok = true;
   if (changed) {
     ok = write_sysutil_config(config);
+  }
+  if (ok && debug_changed) {
+    const bool restart_openhd =
+        !config.disable_openhd_service.value_or(false);
+    (void)apply_openhd_debug_marker(config.debug_enabled, restart_openhd);
   }
   if (ok && hostname_related_change) {
     apply_hostname_if_enabled();
