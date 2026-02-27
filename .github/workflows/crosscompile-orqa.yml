@@ -74,7 +74,7 @@ jobs:
           cpack -G DEB
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openhd-sysutils-aarch64
           path: build-sdk/*.deb
