@@ -68,7 +68,7 @@ jobs:
             cp -v ./*.deb /opt/build_artifacts/
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openhd-sys-utils-deb
           path: build_artifacts/*.deb
