@@ -1090,7 +1090,7 @@ std::vector<WifiCardInfo> detect_wifi_cards(
   return cards;
 }
 
-void refresh_wifi_info() {
+void refresh_wifi_info_impl() {
   const auto overrides = load_overrides();
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();
@@ -1099,6 +1099,10 @@ void refresh_wifi_info() {
 }
 
 }  // namespace
+
+void refresh_wifi_info() {
+  refresh_wifi_info_impl();
+}
 
 void init_wifi_info() {
   refresh_wifi_info();
