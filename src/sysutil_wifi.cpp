@@ -56,6 +56,8 @@ constexpr const char* kOpenHdControlSocketPath =
     "/run/openhd/openhd_ctrl.sock";
 constexpr std::size_t kMaxControlLineLength = 4096;
 constexpr auto kOpenHdControlTimeout = std::chrono::milliseconds(900);
+constexpr const char* kArtosynUsbVendor = "0x4152";
+constexpr const char* kArtosynUsbProduct = "0x8030";
 
 std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
@@ -1090,11 +1092,88 @@ std::vector<WifiCardInfo> detect_wifi_cards(
   return cards;
 }
 
+std::vector<WifiCardInfo> detect_artosyn_cards() {
+  std::vector<WifiCardInfo> cards;
+
+  int found_mdev = 0;
+  for (int i = 0; i < 16; ++i) {
+    const std::string dev = "/dev/ar_mdev" + std::to_string(i);
+    if (!file_exists(dev)) continue;
+    WifiCardInfo card{};
+    card.interface_name = "ar_mdev" + std::to_string(i);
+    card.driver_name = "artosyn_drv";
+    card.vendor_id = normalize_id(kArtosynUsbVendor);
+    card.device_id = normalize_id(kArtosynUsbProduct);
+    card.detected_type = "ARTOSYN";
+    card.override_type.clear();
+    card.effective_type = "ARTOSYN";
+    card.card_name = "Artosyn 8030";
+    cards.push_back(card);
+    ++found_mdev;
+  }
+
+  if (file_exists("/dev/artosyn_sdio")) {
+    WifiCardInfo card{};
+    card.interface_name = "artosyn_sdio";
+    card.driver_name = "artosyn_sdio";
+    card.vendor_id = normalize_id(kArtosynUsbVendor);
+    card.device_id = normalize_id(kArtosynUsbProduct);
+    card.detected_type = "ARTOSYN";
+    card.override_type.clear();
+    card.effective_type = "ARTOSYN";
+    card.card_name = "Artosyn 8030";
+    cards.push_back(card);
+  }
+
+  if (found_mdev > 0) {
+    return cards;
+  }
+
+  std::error_code ec;
+  const std::filesystem::path usb_root("/sys/bus/usb/devices");
+  if (!std::filesystem::exists(usb_root, ec)) {
+    return cards;
+  }
+  int usb_idx = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(usb_root, ec)) {
+    if (ec) break;
+    const auto id_vendor_path = entry.path() / "idVendor";
+    const auto id_product_path = entry.path() / "idProduct";
+    if (!file_exists(id_vendor_path.string()) ||
+        !file_exists(id_product_path.string())) {
+      continue;
+    }
+    const auto vendor = normalize_id(read_file(id_vendor_path.string())
+                                         .value_or(""));
+    const auto product = normalize_id(read_file(id_product_path.string())
+                                          .value_or(""));
+    if (!equal_after_uppercase(vendor, normalize_id(kArtosynUsbVendor)) ||
+        !equal_after_uppercase(product, normalize_id(kArtosynUsbProduct))) {
+      continue;
+    }
+    WifiCardInfo card{};
+    card.interface_name = "artosyn_usb" + std::to_string(usb_idx++);
+    card.driver_name = "artosyn_usb";
+    card.vendor_id = vendor;
+    card.device_id = product;
+    card.detected_type = "ARTOSYN";
+    card.override_type.clear();
+    card.effective_type = "ARTOSYN";
+    card.card_name = "Artosyn 8030";
+    cards.push_back(card);
+  }
+
+  return cards;
+}
+
 void refresh_wifi_info_impl() {
   const auto overrides = load_overrides();
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();
   g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
+  const auto artosyn_cards = detect_artosyn_cards();
+  g_wifi_cards.insert(g_wifi_cards.end(), artosyn_cards.begin(),
+                      artosyn_cards.end());
   g_wifi_initialized = true;
 }
 
