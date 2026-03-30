@@ -108,13 +108,28 @@ static pid_t g_video_pid = -1;
 
 bool is_ground_mode() {
     SysutilConfig config;
-    if (load_sysutil_config(config) != ConfigLoadResult::Loaded) {
+    const auto load_result = load_sysutil_config(config);
+    if (load_result == ConfigLoadResult::Error) {
         return false;
     }
+
+    // Keep startup behavior aligned with settings responses:
+    // when run_mode is missing or invalid, treat the unit as ground by default.
     if (!config.run_mode.has_value()) {
+        return true;
+    }
+
+    std::string mode = trim(config.run_mode.value());
+    std::transform(mode.begin(), mode.end(), mode.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (mode == "air") {
         return false;
     }
-    return config.run_mode.value() == "ground";
+    if (mode == "ground") {
+        return true;
+    }
+    return true;
 }
 
 bool is_rpi_platform() {
