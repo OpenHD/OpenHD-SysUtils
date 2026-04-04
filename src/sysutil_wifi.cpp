@@ -61,6 +61,70 @@ constexpr const char* kArtosynUsbProduct = "0x8030";
 
 std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
+bool is_openhd_wifibroadcast_type(const std::string& type_name);
+
+void log_wifi(const std::string& message) {
+  std::cerr << "[sysutils][wifi] " << message << std::endl;
+}
+
+std::string join_strings(const std::vector<std::string>& values,
+                         const char* separator) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      out << separator;
+    }
+    out << values[i];
+  }
+  return out.str();
+}
+
+std::string card_short_description(const WifiCardInfo& card) {
+  std::ostringstream out;
+  out << "iface=" << card.interface_name
+      << " phy=" << card.phy_index
+      << " driver=" << (card.driver_name.empty() ? "<none>" : card.driver_name)
+      << " detected=" << (card.detected_type.empty() ? "<none>" : card.detected_type)
+      << " type=" << (card.effective_type.empty() ? "<none>" : card.effective_type)
+      << " vendor=" << (card.vendor_id.empty() ? "<none>" : card.vendor_id)
+      << " device=" << (card.device_id.empty() ? "<none>" : card.device_id);
+  if (card.disabled) {
+    out << " disabled=true";
+  }
+  return out.str();
+}
+
+void log_wifi_detection_summary(const std::vector<WifiCardInfo>& cards) {
+  if (cards.empty()) {
+    log_wifi("No Wi-Fi cards detected.");
+    return;
+  }
+
+  std::vector<std::string> openhd_cards;
+  std::vector<std::string> non_openhd_cards;
+  std::vector<std::string> disabled_cards;
+  for (const auto& card : cards) {
+    if (card.disabled) {
+      disabled_cards.push_back(card.interface_name + "(override=DISABLED)");
+      continue;
+    }
+    if (is_openhd_wifibroadcast_type(card.effective_type)) {
+      openhd_cards.push_back(card.interface_name + "(" + card.effective_type + ")");
+    } else {
+      non_openhd_cards.push_back(card.interface_name + "(" + card.effective_type + ")");
+    }
+  }
+
+  if (!openhd_cards.empty()) {
+    log_wifi("OpenHD-compatible card(s): " + join_strings(openhd_cards, ", "));
+  } else if (!non_openhd_cards.empty()) {
+    log_wifi("No OpenHD-compatible card found. Non-OpenHD card(s): " +
+             join_strings(non_openhd_cards, ", "));
+  } else {
+    log_wifi("No OpenHD-compatible card found. All detected card(s) are disabled: " +
+             join_strings(disabled_cards, ", "));
+  }
+}
 
 struct WifiTxPowerOverride {
   std::string tx_power;
@@ -289,6 +353,7 @@ std::unordered_map<std::string, std::string> load_overrides() {
   std::unordered_map<std::string, std::string> overrides;
   std::ifstream file(kOverridesPath);
   if (!file) {
+    log_wifi(std::string("override file not found or unreadable: ") + kOverridesPath);
     return overrides;
   }
   std::string line;
@@ -471,10 +536,14 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
   std::vector<WifiCardProfile> profiles;
   auto content = read_file(kWifiCardsPath);
   if (!content) {
+    log_wifi(std::string("wifi card profile file not found/unreadable, using defaults: ") +
+             kWifiCardsPath);
     return default_wifi_card_profiles();
   }
   auto objects = extract_array_objects(*content, "cards");
   if (objects.empty()) {
+    log_wifi(std::string("wifi profile list empty/invalid in ") + kWifiCardsPath +
+             ", using defaults.");
     return default_wifi_card_profiles();
   }
 
@@ -560,8 +629,12 @@ std::vector<WifiCardProfile> load_wifi_card_profiles() {
     profiles.push_back(profile);
   }
   if (profiles.empty()) {
+    log_wifi(std::string("no valid wifi profiles loaded from ") + kWifiCardsPath +
+             ", using defaults.");
     return default_wifi_card_profiles();
   }
+  log_wifi("Loaded " + std::to_string(profiles.size()) +
+           " Wi-Fi card profile(s) from " + kWifiCardsPath + ".");
   return profiles;
 }
 
@@ -597,6 +670,8 @@ std::unordered_map<std::string, WifiTxPowerOverride> load_tx_power_overrides() {
   std::unordered_map<std::string, WifiTxPowerOverride> overrides;
   std::ifstream file(kTxPowerOverridesPath);
   if (!file) {
+    log_wifi(std::string("TX power override file not found or unreadable: ") +
+             kTxPowerOverridesPath);
     return overrides;
   }
   std::string line;
@@ -642,6 +717,10 @@ std::unordered_map<std::string, WifiTxPowerOverride> load_tx_power_overrides() {
     } else if (field_upper == "PROFILE_CHIPSET") {
       entry.profile_chipset = normalize_chipset(value);
     }
+  }
+  if (!overrides.empty()) {
+    log_wifi("Loaded TX power override(s) for " +
+             std::to_string(overrides.size()) + " interface(s).");
   }
   return overrides;
 }
@@ -941,14 +1020,31 @@ WifiCardInfo build_wifi_card(
   auto device_path = "/sys/class/net/" + interface_name + "/device";
   auto uevent_path = device_path + "/uevent";
   if (interface_name == "ath0" && !file_exists(uevent_path)) {
+    log_wifi("ath0 uevent missing at " + uevent_path +
+             ", trying legacy fallback /sys/class/net/wifi0/device.");
     device_path = "/sys/class/net/wifi0/device";
     uevent_path = device_path + "/uevent";
   }
-  const auto uevent = read_file(uevent_path).value_or("");
+  std::string uevent;
+  if (!file_exists(uevent_path)) {
+    log_wifi("missing uevent path for interface " + interface_name + ": " +
+             uevent_path);
+  } else {
+    const auto uevent_content = read_file(uevent_path);
+    if (!uevent_content) {
+      log_wifi("failed reading uevent path for interface " + interface_name +
+               ": " + uevent_path);
+    } else {
+      uevent = *uevent_content;
+    }
+  }
   if (!uevent.empty()) {
     auto driver = extract_driver_name(uevent);
     if (driver) {
       card.driver_name = *driver;
+    } else {
+      log_wifi("no DRIVER= entry in " + uevent_path + " for interface " +
+               interface_name + ".");
     }
   }
 
@@ -957,10 +1053,25 @@ WifiCardInfo build_wifi_card(
   const auto phy_index = read_int_file(phy_path);
   if (phy_index) {
     card.phy_index = *phy_index;
+  } else if (!file_exists(phy_path)) {
+    log_wifi("missing phy index path for interface " + interface_name + ": " +
+             phy_path);
+  } else {
+    log_wifi("failed to parse phy index from " + phy_path +
+             " for interface " + interface_name + ".");
   }
 
   const auto mac_path = "/sys/class/net/" + interface_name + "/address";
-  card.mac = trim_copy(read_file(mac_path).value_or(""));
+  if (!file_exists(mac_path)) {
+    log_wifi("missing MAC address path for interface " + interface_name + ": " +
+             mac_path);
+  } else {
+    card.mac = trim_copy(read_file(mac_path).value_or(""));
+    if (card.mac.empty()) {
+      log_wifi("MAC address is empty for interface " + interface_name + " at " +
+               mac_path + ".");
+    }
+  }
 
   fill_vendor_device_from_sysfs(device_path, card.vendor_id, card.device_id);
   if (!uevent.empty()) {
@@ -968,6 +1079,10 @@ WifiCardInfo build_wifi_card(
   }
 
   card.detected_type = driver_to_type(card.driver_name);
+  if (equal_after_uppercase(card.detected_type, "UNKNOWN")) {
+    log_wifi("driver '" + card.driver_name + "' on interface " + interface_name +
+             " maps to UNKNOWN type.");
+  }
 
   auto override_it = overrides.find(interface_name);
   if (override_it != overrides.end()) {
@@ -975,8 +1090,12 @@ WifiCardInfo build_wifi_card(
     if (equal_after_uppercase(card.override_type, "DISABLED")) {
       card.disabled = true;
       card.effective_type = card.detected_type;
+      log_wifi("interface " + interface_name +
+               " is disabled by override (override_type=DISABLED).");
     } else {
       card.effective_type = card.override_type;
+      log_wifi("interface " + interface_name + " type overridden to '" +
+               card.override_type + "'.");
     }
   } else {
     card.effective_type = card.detected_type;
@@ -1077,17 +1196,32 @@ std::vector<WifiCardInfo> detect_wifi_cards(
     const std::vector<WifiCardProfile>& profiles) {
   std::vector<WifiCardInfo> cards;
   std::error_code ec;
+  log_wifi("Starting Wi-Fi detection in /sys/class/net.");
   std::filesystem::directory_iterator dir("/sys/class/net", ec);
   if (ec) {
+    log_wifi("Failed to iterate /sys/class/net: " + ec.message());
     return cards;
   }
   for (const auto& entry : dir) {
     const auto iface = entry.path().filename().string();
     std::error_code exists_ec;
-    if (!std::filesystem::exists(entry.path() / "phy80211", exists_ec)) {
+    const auto phy_dir = entry.path() / "phy80211";
+    if (!std::filesystem::exists(phy_dir, exists_ec)) {
+      if (exists_ec) {
+        log_wifi("Failed to check " + phy_dir.string() + ": " +
+                 exists_ec.message());
+      } else {
+        log_wifi("Skipping interface " + iface + ": no Wi-Fi PHY path at " +
+                 phy_dir.string());
+      }
       continue;
     }
-    cards.push_back(build_wifi_card(iface, overrides, tx_overrides, profiles));
+    auto card = build_wifi_card(iface, overrides, tx_overrides, profiles);
+    log_wifi("Detected card: " + card_short_description(card));
+    cards.push_back(card);
+  }
+  if (cards.empty()) {
+    log_wifi("No interfaces with /sys/class/net/<iface>/phy80211 were detected.");
   }
   return cards;
 }
@@ -1132,6 +1266,12 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
   std::error_code ec;
   const std::filesystem::path usb_root("/sys/bus/usb/devices");
   if (!std::filesystem::exists(usb_root, ec)) {
+    if (ec) {
+      log_wifi("Failed to check Artosyn USB path " + usb_root.string() + ": " +
+               ec.message());
+    } else {
+      log_wifi("Artosyn USB path not found: " + usb_root.string());
+    }
     return cards;
   }
   int usb_idx = 0;
@@ -1167,13 +1307,19 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
 }
 
 void refresh_wifi_info_impl() {
+  log_wifi("Refreshing Wi-Fi info.");
   const auto overrides = load_overrides();
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();
   g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
   const auto artosyn_cards = detect_artosyn_cards();
+  if (!artosyn_cards.empty()) {
+    log_wifi("Detected " + std::to_string(artosyn_cards.size()) +
+             " Artosyn card(s).");
+  }
   g_wifi_cards.insert(g_wifi_cards.end(), artosyn_cards.begin(),
                       artosyn_cards.end());
+  log_wifi_detection_summary(g_wifi_cards);
   g_wifi_initialized = true;
 }
 

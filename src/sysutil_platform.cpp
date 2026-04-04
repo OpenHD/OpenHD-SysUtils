@@ -45,6 +45,10 @@ namespace {
 PlatformInfo g_platform_info{};
 bool g_platform_initialized = false;
 
+void log_platform(const std::string& message) {
+  std::cerr << "[sysutils][platform] " << message << std::endl;
+}
+
 // Checks for file presence with a non-throwing API.
 bool file_exists(const std::string& path) {
   std::error_code ec;
@@ -291,6 +295,10 @@ void init_platform_info() {
     (void)write_sysutil_config(updated_config);
   }
   write_platform_manifest(g_platform_info);
+  log_platform("Active platform: type=" + std::to_string(g_platform_info.platform_type) +
+               " name=" + g_platform_info.platform_name +
+               " source=" + (has_cached_platform ? std::string("config-cache")
+                                                 : std::string("detected")));
   g_platform_initialized = true;
 }
 
@@ -327,9 +335,11 @@ bool is_platform_update_request(const std::string& line) {
 // Handles platform update requests (refresh detection or override).
 std::string handle_platform_update(const std::string& line) {
   auto action = extract_string_field(line, "action").value_or("refresh");
+  log_platform("platform.update request action=" + action);
   SysutilConfig config;
   const auto load_result = load_sysutil_config(config);
   if (load_result == ConfigLoadResult::Error) {
+    log_platform("platform.update failed: cannot read sysutil config.");
     return "{\"type\":\"sysutil.platform.update.response\",\"ok\":false}\n";
   }
 
@@ -367,6 +377,12 @@ std::string handle_platform_update(const std::string& line) {
     g_platform_info = info;
     g_platform_initialized = true;
     write_platform_manifest(g_platform_info);
+    log_platform("platform.update result: type=" +
+                 std::to_string(g_platform_info.platform_type) +
+                 " name=" + g_platform_info.platform_name +
+                 " action=" + action);
+  } else {
+    log_platform("platform.update failed for action=" + action);
   }
 
   std::ostringstream out;
