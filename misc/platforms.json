@@ -11,8 +11,7 @@
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1126", "id": 23, "display": "RV1126"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
-    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1106", "id": 25, "display": "RV1106"},
-    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1103", "id": 26, "display": "RV1103"},
+    {"key": "X_PLATFORM_TYPE_LUCKFOX_RV110X", "id": 25, "display": "RV110X"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27},
     {"key": "X_PLATFORM_TYPE_ALWINNER_X20", "id": 30, "display": "X20"},
     {"key": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7S", "id": 31},
@@ -137,10 +136,10 @@
       ]
     },
     {
-      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RV1106",
-      "log": "Detected Rockchip RV1106.",
+      "platform": "X_PLATFORM_TYPE_LUCKFOX_RV110X",
+      "log": "Detected Luckfox RV110X.",
       "conditions": [
-        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1106"}
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_matches": ["rv1103", "rv1106"]}
       ]
     },
     {
