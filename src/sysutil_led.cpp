@@ -83,6 +83,61 @@ std::string to_lower(std::string value) {
   return value;
 }
 
+bool contains_any_token(const std::string& haystack_lower,
+                        const std::vector<std::string>& needles_lower) {
+  for (const auto& needle : needles_lower) {
+    if (!needle.empty() && haystack_lower.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string build_status_text_lower(const StatusSnapshot& status) {
+  std::string combined;
+  combined.reserve(status.state.size() + status.description.size() +
+                   status.message.size() + status.type.size() + 8);
+  combined += status.state;
+  combined.push_back(' ');
+  combined += status.description;
+  combined.push_back(' ');
+  combined += status.message;
+  combined.push_back(' ');
+  combined += status.type;
+  return to_lower(combined);
+}
+
+enum class ErrorKind {
+  WifiCardMissing,
+  CameraMissing,
+  Other
+};
+
+ErrorKind classify_error_kind(const StatusSnapshot& status) {
+  const auto text = build_status_text_lower(status);
+  const std::vector<std::string> wifi_card_missing_tokens = {
+      "no openhd wifibroadcast card found",
+      "no openhd-compatible card found",
+      "no wifi cards detected",
+      "no wi-fi cards detected",
+      "openhd-compatible card not found"};
+  if (contains_any_token(text, wifi_card_missing_tokens)) {
+    return ErrorKind::WifiCardMissing;
+  }
+
+  const std::vector<std::string> camera_missing_tokens = {
+      "no physical camera detected",
+      "no camera detected",
+      "camera not found",
+      "camera setup failed",
+      "dummy camera configuration",
+      "unable to apply camera configuration"};
+  if (contains_any_token(text, camera_missing_tokens)) {
+    return ErrorKind::CameraMissing;
+  }
+  return ErrorKind::Other;
+}
+
 bool write_file(const std::string& path, const std::string& value) {
   std::ofstream file(path);
   if (!file) {
@@ -215,7 +270,16 @@ LedLayout discover_leds() {
 }
 
 LedPattern select_pattern_from_status(const StatusSnapshot& status) {
-  LedPattern error_pattern{LedPatternType::Alternate, LedTarget::Both, 80, 80, -1};
+  // Distinct error frequencies:
+  // - Wi-Fi card missing: fast
+  // - Camera missing: medium
+  // - Other errors: slow
+  LedPattern wifi_missing_error_pattern{LedPatternType::Blink, LedTarget::Both,
+                                        120, 120, -1};
+  LedPattern camera_missing_error_pattern{LedPatternType::Blink, LedTarget::Both,
+                                          300, 300, -1};
+  LedPattern other_error_pattern{LedPatternType::Blink, LedTarget::Both, 700, 700,
+                                 -1};
   LedPattern warn_pattern{LedPatternType::Blink, LedTarget::Secondary, 200, 200, -1};
   LedPattern starting_pattern{LedPatternType::Blink, LedTarget::Primary, 200, 200, -1};
   LedPattern ready_pattern{LedPatternType::Solid, LedTarget::Primary, 200, 200, -1};
@@ -230,7 +294,15 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
     return stopped_pattern;
   }
   if (status.has_error || status.severity >= 2) {
-    return error_pattern;
+    switch (classify_error_kind(status)) {
+      case ErrorKind::WifiCardMissing:
+        return wifi_missing_error_pattern;
+      case ErrorKind::CameraMissing:
+        return camera_missing_error_pattern;
+      case ErrorKind::Other:
+      default:
+        return other_error_pattern;
+    }
   }
   if (status.severity == 1) {
     return warn_pattern;
@@ -251,7 +323,7 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
       {"boot", starting_pattern},
       {"ready", ready_pattern},
       {"link_lost", warn_pattern},
-      {"error", error_pattern},
+      {"error", other_error_pattern},
       {"stopped", stopped_pattern},
   };
 
