@@ -90,6 +90,11 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.set_hostname = extract_bool_field(content, "set_hostname");
   config.reset_requested = extract_bool_field(content, "reset_requested");
   config.camera_type = extract_int_field(content, "camera_type");
+  config.camera2_type = extract_int_field(content, "camera2_type");
+  config.camera_resolution_fps =
+      extract_string_field(content, "camera_resolution_fps");
+  config.camera2_resolution_fps =
+      extract_string_field(content, "camera2_resolution_fps");
   config.run_mode = extract_string_field(content, "run_mode");
   config.firstboot = extract_bool_field(content, "firstboot");
   config.init_system = extract_string_field(content, "init_system");
@@ -206,6 +211,9 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_bool("set_hostname", config.set_hostname);
   write_bool("reset_requested", config.reset_requested);
   write_int("camera_type", config.camera_type);
+  write_int("camera2_type", config.camera2_type);
+  write_string("camera_resolution_fps", config.camera_resolution_fps);
+  write_string("camera2_resolution_fps", config.camera2_resolution_fps);
   write_string("run_mode", config.run_mode);
   write_bool("firstboot", config.firstboot);
   write_string("init_system", config.init_system);

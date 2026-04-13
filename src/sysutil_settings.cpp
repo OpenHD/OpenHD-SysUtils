@@ -57,6 +57,8 @@ constexpr const char* kDefaultMicrohardPassword = "qwertz1";
 constexpr int kDefaultMicrohardVideoPort = 5910;
 constexpr int kDefaultMicrohardTelemetryPort = 5920;
 constexpr bool kRecordModeEnabled = false;
+constexpr int kLegacyUsbCameraType = 1;
+constexpr int kUsbGenericCameraType = 10;
 
 bool file_exists(const char* path) {
   std::error_code ec;
@@ -123,6 +125,14 @@ std::optional<int> read_int_file(const char* path) {
   return value;
 }
 
+int normalize_camera_type(int value) {
+  // ImageWriter historically emits "1" for USB. OpenHD expects USB generic as 10.
+  if (value == kLegacyUsbCameraType) {
+    return kUsbGenericCameraType;
+  }
+  return value;
+}
+
 }  // namespace
 
 void sync_settings_from_files() {
@@ -149,21 +159,36 @@ void sync_settings_from_files() {
       buffer << file.rdbuf();
       const std::string content = buffer.str();
 
-      // Parse camera (supports int or string)
-      auto cam_int = extract_int_field(content, "camera");
-      if (cam_int) {
-        config.camera_type = *cam_int;
-        changed = true;
-      } else {
-        auto cam_str = extract_string_field(content, "camera");
-        if (cam_str) {
+      // Parse camera fields (supports int or string)
+      auto parse_camera_field = [&](const char* key, std::optional<int>& out) {
+        if (auto cam_int = extract_int_field(content, key); cam_int) {
+          out = normalize_camera_type(*cam_int);
+          changed = true;
+          return;
+        }
+        if (auto cam_str = extract_string_field(content, key); cam_str) {
           try {
-            config.camera_type = std::stoi(*cam_str);
+            out = normalize_camera_type(std::stoi(*cam_str));
             changed = true;
           } catch (...) {
             // Invalid integer string
           }
         }
+      };
+      parse_camera_field("camera", config.camera_type);
+      parse_camera_field("camera2", config.camera2_type);
+
+      if (auto camera_resolution_fps =
+              extract_string_field(content, "camera_resolution_fps");
+          camera_resolution_fps.has_value()) {
+        config.camera_resolution_fps = *camera_resolution_fps;
+        changed = true;
+      }
+      if (auto camera2_resolution_fps =
+              extract_string_field(content, "camera2_resolution_fps");
+          camera2_resolution_fps.has_value()) {
+        config.camera2_resolution_fps = *camera2_resolution_fps;
+        changed = true;
       }
 
       // Parse role
@@ -257,6 +282,11 @@ std::string build_settings_response() {
     }
   }
   const bool has_camera_type = config.camera_type.has_value();
+  const bool has_camera2_type = config.camera2_type.has_value();
+  const bool has_camera_resolution_fps =
+      config.camera_resolution_fps.has_value();
+  const bool has_camera2_resolution_fps =
+      config.camera2_resolution_fps.has_value();
   const bool wifi_enable_autodetect =
       config.wifi_enable_autodetect.value_or(kDefaultWifiEnableAutodetect);
   const std::string wifi_wb_link_cards =
@@ -310,6 +340,22 @@ std::string build_settings_response() {
       << ",\"reset_requested\":" << (reset_requested ? "true" : "false")
       << ",\"has_camera_type\":" << (has_camera_type ? "true" : "false")
       << ",\"camera_type\":" << (has_camera_type ? *config.camera_type : 0)
+      << ",\"has_camera2_type\":" << (has_camera2_type ? "true" : "false")
+      << ",\"camera2_type\":" << (has_camera2_type ? *config.camera2_type : 0)
+      << ",\"has_camera_resolution_fps\":"
+      << (has_camera_resolution_fps ? "true" : "false")
+      << ",\"camera_resolution_fps\":\""
+      << json_escape(has_camera_resolution_fps
+                         ? *config.camera_resolution_fps
+                         : "")
+      << "\""
+      << ",\"has_camera2_resolution_fps\":"
+      << (has_camera2_resolution_fps ? "true" : "false")
+      << ",\"camera2_resolution_fps\":\""
+      << json_escape(has_camera2_resolution_fps
+                         ? *config.camera2_resolution_fps
+                         : "")
+      << "\""
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
       << ",\"run_mode\":\""
       << json_escape(has_run_mode ? run_mode : "ground") << "\""
@@ -372,7 +418,27 @@ std::string handle_settings_update(const std::string& line) {
 
   if (auto camera_type = extract_int_field(line, "camera_type");
       camera_type.has_value()) {
-    config.camera_type = *camera_type;
+    config.camera_type = normalize_camera_type(*camera_type);
+    changed = true;
+  }
+
+  if (auto camera2_type = extract_int_field(line, "camera2_type");
+      camera2_type.has_value()) {
+    config.camera2_type = normalize_camera_type(*camera2_type);
+    changed = true;
+  }
+
+  if (auto camera_resolution_fps =
+          extract_string_field(line, "camera_resolution_fps");
+      camera_resolution_fps.has_value()) {
+    config.camera_resolution_fps = *camera_resolution_fps;
+    changed = true;
+  }
+
+  if (auto camera2_resolution_fps =
+          extract_string_field(line, "camera2_resolution_fps");
+      camera2_resolution_fps.has_value()) {
+    config.camera2_resolution_fps = *camera2_resolution_fps;
     changed = true;
   }
 
@@ -585,7 +651,7 @@ std::string handle_camera_setup_request(const std::string& line) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"missing camera_type\"}\n";
   }
 
-  config.camera_type = *camera_type;
+  config.camera_type = normalize_camera_type(*camera_type);
   if (!write_sysutil_config(config)) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"config write failed\"}\n";
   }
