@@ -63,6 +63,7 @@ constexpr const char* kOpenHdControlSocketPath =
 constexpr std::size_t kMaxControlLineLength = 4096;
 constexpr auto kOpenHdControlTimeout = std::chrono::milliseconds(900);
 constexpr const char* kArtosynUsbVendor = "0x4152";
+constexpr const char* kArtosynUsbVendorHsMode = "0x1d6b";
 constexpr const char* kArtosynUsbProduct = "0x8030";
 constexpr int kArtosynDaemonPort = 50000;
 
@@ -993,7 +994,14 @@ bool is_openhd_wifibroadcast_type(const std::string& type_name) {
   if (type_upper.empty()) {
     return false;
   }
-  return type_upper.rfind("OPENHD_", 0) == 0;
+  if (type_upper.rfind("OPENHD_", 0) == 0) {
+    return true;
+  }
+  if (type_upper == "ARTOSYN" || type_upper == "AR8030" ||
+      type_upper == "ARTLINK") {
+    return true;
+  }
+  return false;
 }
 
 std::optional<std::string> extract_driver_name(const std::string& uevent) {
@@ -1441,6 +1449,9 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
     return cards;
   }
   int usb_idx = 0;
+  const auto artosyn_vendor = normalize_id(kArtosynUsbVendor);
+  const auto artosyn_hs_vendor = normalize_id(kArtosynUsbVendorHsMode);
+  const auto artosyn_product = normalize_id(kArtosynUsbProduct);
   for (const auto& entry : std::filesystem::directory_iterator(usb_root, ec)) {
     if (ec) break;
     const auto id_vendor_path = entry.path() / "idVendor";
@@ -1453,9 +1464,15 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
                                          .value_or(""));
     const auto product = normalize_id(read_file(id_product_path.string())
                                           .value_or(""));
-    if (!equal_after_uppercase(vendor, normalize_id(kArtosynUsbVendor)) ||
-        !equal_after_uppercase(product, normalize_id(kArtosynUsbProduct))) {
+    const bool vendor_match =
+        equal_after_uppercase(vendor, artosyn_vendor) ||
+        equal_after_uppercase(vendor, artosyn_hs_vendor);
+    if (!vendor_match || !equal_after_uppercase(product, artosyn_product)) {
       continue;
+    }
+    if (equal_after_uppercase(vendor, artosyn_hs_vendor)) {
+      log_wifi("Detected Artosyn USB in HS mode (vendor " + vendor +
+               ", product " + product + ") at " + entry.path().string() + ".");
     }
     WifiCardInfo card{};
     card.interface_name = "artosyn_usb" + std::to_string(usb_idx++);
