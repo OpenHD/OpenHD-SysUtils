@@ -274,21 +274,28 @@ void init_platform_info() {
   const bool has_cached_platform =
       (load_result == ConfigLoadResult::Loaded &&
        config.platform_type.has_value() && config.platform_name.has_value());
+  const bool cached_unknown_platform =
+      (has_cached_platform &&
+       config.platform_type.value() == X_PLATFORM_TYPE_UNKNOWN);
+  const bool use_cached_platform = has_cached_platform && !cached_unknown_platform;
 
-  if (load_result == ConfigLoadResult::Loaded && config.platform_type) {
+  if (load_result == ConfigLoadResult::Loaded && config.platform_type &&
+      !cached_unknown_platform) {
     g_platform_info.platform_type = *config.platform_type;
   } else {
     g_platform_info.platform_type = discover_platform_type();
   }
 
-  if (load_result == ConfigLoadResult::Loaded && config.platform_name) {
+  if (load_result == ConfigLoadResult::Loaded && config.platform_name &&
+      !cached_unknown_platform) {
     g_platform_info.platform_name = *config.platform_name;
   } else {
     g_platform_info.platform_name =
         platform_type_to_string(g_platform_info.platform_type);
   }
 
-  if (!has_cached_platform && load_result != ConfigLoadResult::Error) {
+  if ((!has_cached_platform || cached_unknown_platform) &&
+      load_result != ConfigLoadResult::Error) {
     SysutilConfig updated_config = config;
     updated_config.platform_type = g_platform_info.platform_type;
     updated_config.platform_name = g_platform_info.platform_name;
@@ -297,7 +304,7 @@ void init_platform_info() {
   write_platform_manifest(g_platform_info);
   log_platform("Active platform: type=" + std::to_string(g_platform_info.platform_type) +
                " name=" + g_platform_info.platform_name +
-               " source=" + (has_cached_platform ? std::string("config-cache")
+               " source=" + (use_cached_platform ? std::string("config-cache")
                                                  : std::string("detected")));
   g_platform_initialized = true;
 }
