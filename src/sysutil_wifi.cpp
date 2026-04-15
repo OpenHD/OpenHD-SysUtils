@@ -27,6 +27,7 @@
 #include <cctype>
 #include <cstring>
 #include <cerrno>
+#include <cstdlib>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -36,10 +37,15 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <array>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unordered_map>
 #include <unistd.h>
+#include <utility>
 
 #include "sysutil_protocol.h"
 
@@ -58,10 +64,13 @@ constexpr std::size_t kMaxControlLineLength = 4096;
 constexpr auto kOpenHdControlTimeout = std::chrono::milliseconds(900);
 constexpr const char* kArtosynUsbVendor = "0x4152";
 constexpr const char* kArtosynUsbProduct = "0x8030";
+constexpr int kArtosynDaemonPort = 50000;
 
 std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
 bool is_openhd_wifibroadcast_type(const std::string& type_name);
+bool file_exists(const std::string& path);
+bool equal_after_uppercase(const std::string& lhs, const std::string& rhs);
 
 void log_wifi(const std::string& message) {
   std::cerr << "[sysutils][wifi] " << message << std::endl;
@@ -77,6 +86,159 @@ std::string join_strings(const std::vector<std::string>& values,
     out << values[i];
   }
   return out.str();
+}
+
+bool run_cmd_quiet(const std::string& cmd) {
+  const int ret = std::system(cmd.c_str());
+  return ret == 0;
+}
+
+bool has_systemctl() {
+  return file_exists("/bin/systemctl") || file_exists("/usr/bin/systemctl");
+}
+
+bool has_service_cmd() {
+  return file_exists("/sbin/service") || file_exists("/usr/sbin/service") ||
+         file_exists("/usr/bin/service");
+}
+
+bool is_tcp_listening_localhost(int port) {
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    return false;
+  }
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<uint16_t>(port));
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  const int ret = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  ::close(fd);
+  return ret == 0;
+}
+
+bool wait_for_artosyn_daemon_ready(int port,
+                                   std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (is_tcp_listening_localhost(port)) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+  }
+  return is_tcp_listening_localhost(port);
+}
+
+int select_artosyn_daemon_intf(const std::vector<WifiCardInfo>& cards) {
+  for (const auto& card : cards) {
+    if (card.interface_name.rfind("ar_mdev", 0) == 0) {
+      return 3;  // drv
+    }
+  }
+  for (const auto& card : cards) {
+    if (equal_after_uppercase(card.interface_name, "artosyn_sdio")) {
+      return 1;  // sdio
+    }
+  }
+  return 0;  // usb
+}
+
+bool start_artosyn_daemon_via_service() {
+  static constexpr std::array<const char*, 4> service_names = {
+      "openhd-artosyn", "artosyn", "artlink", "ar8030"};
+  if (has_systemctl()) {
+    for (const auto* service_name : service_names) {
+      const std::string cmd =
+          std::string("systemctl start ") + service_name + " >/dev/null 2>&1";
+      if (run_cmd_quiet(cmd)) {
+        log_wifi(std::string("Started Artosyn daemon via systemctl service ") +
+                 service_name + ".");
+        return true;
+      }
+    }
+  }
+  if (has_service_cmd()) {
+    for (const auto* service_name : service_names) {
+      const std::string cmd =
+          std::string("service ") + service_name + " start >/dev/null 2>&1";
+      if (run_cmd_quiet(cmd)) {
+        log_wifi(std::string("Started Artosyn daemon via service ") +
+                 service_name + ".");
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool start_artosyn_daemon_via_binary(int daemon_intf) {
+  static constexpr std::array<const char*, 10> daemon_candidates = {
+      "/usr/local/bin/artosyn_daemon",
+      "/usr/bin/artosyn_daemon",
+      "/usr/local/bin/ar8030_daemon",
+      "/usr/bin/ar8030_daemon",
+      "/usr/local/bin/artlinkd",
+      "/usr/bin/artlinkd",
+      "/usr/local/bin/bbd",
+      "/usr/bin/bbd",
+      "/usr/local/bin/bb_daemon",
+      "/usr/bin/bb_daemon"};
+  for (const auto* daemon_path : daemon_candidates) {
+    if (!file_exists(daemon_path)) {
+      continue;
+    }
+    std::ostringstream cmd;
+    cmd << daemon_path << " -i " << daemon_intf << " -p "
+        << kArtosynDaemonPort
+        << " >/tmp/openhd_artosyn_daemon.log 2>&1 &";
+    if (run_cmd_quiet(cmd.str())) {
+      log_wifi(std::string("Started Artosyn daemon binary ") + daemon_path +
+               " (intf " + std::to_string(daemon_intf) + ", port " +
+               std::to_string(kArtosynDaemonPort) + ").");
+      return true;
+    }
+  }
+  return false;
+}
+
+std::pair<bool, std::string> ensure_artosyn_daemon_running(
+    const std::vector<WifiCardInfo>& artosyn_cards) {
+  if (artosyn_cards.empty()) {
+    return {false, "not-applicable"};
+  }
+  if (is_tcp_listening_localhost(kArtosynDaemonPort)) {
+    return {true, "already-running"};
+  }
+
+  static auto last_attempt = std::chrono::steady_clock::time_point{};
+  const auto now = std::chrono::steady_clock::now();
+  if (last_attempt != std::chrono::steady_clock::time_point{} &&
+      (now - last_attempt) < std::chrono::seconds(4)) {
+    return {false, "throttled"};
+  }
+  last_attempt = now;
+
+  bool started = false;
+  if (start_artosyn_daemon_via_service()) {
+    started = wait_for_artosyn_daemon_ready(
+        kArtosynDaemonPort, std::chrono::milliseconds(2200));
+    if (started) {
+      return {true, "started-via-service"};
+    }
+  }
+
+  const int daemon_intf = select_artosyn_daemon_intf(artosyn_cards);
+  if (start_artosyn_daemon_via_binary(daemon_intf)) {
+    started = wait_for_artosyn_daemon_ready(
+        kArtosynDaemonPort, std::chrono::milliseconds(2600));
+    if (started) {
+      return {true, "started-via-binary"};
+    }
+  }
+
+  if (is_tcp_listening_localhost(kArtosynDaemonPort)) {
+    return {true, "running-after-start-attempt"};
+  }
+  return {false, "start-failed"};
 }
 
 std::string card_short_description(const WifiCardInfo& card) {
@@ -343,6 +505,10 @@ void append_cards_json(std::ostringstream& out,
         << ",\"power_high\":\"" << json_escape(card.power_high) << "\""
         << ",\"power_min\":\"" << json_escape(card.power_min) << "\""
         << ",\"power_max\":\"" << json_escape(card.power_max) << "\""
+        << ",\"artosyn_daemon_running\":"
+        << (card.artosyn_daemon_running ? "true" : "false")
+        << ",\"artosyn_daemon_detail\":\""
+        << json_escape(card.artosyn_daemon_detail) << "\""
         << ",\"disabled\":" << (card.disabled ? "true" : "false")
         << "}";
   }
@@ -1312,10 +1478,22 @@ void refresh_wifi_info_impl() {
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();
   g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
-  const auto artosyn_cards = detect_artosyn_cards();
+  auto artosyn_cards = detect_artosyn_cards();
   if (!artosyn_cards.empty()) {
     log_wifi("Detected " + std::to_string(artosyn_cards.size()) +
              " Artosyn card(s).");
+  }
+  const auto daemon_state = ensure_artosyn_daemon_running(artosyn_cards);
+  for (auto& card : artosyn_cards) {
+    card.artosyn_daemon_running = daemon_state.first;
+    card.artosyn_daemon_detail = daemon_state.second;
+  }
+  if (!artosyn_cards.empty()) {
+    if (daemon_state.first) {
+      log_wifi("Artosyn daemon ready (" + daemon_state.second + ").");
+    } else {
+      log_wifi("Artosyn daemon not ready (" + daemon_state.second + ").");
+    }
   }
   g_wifi_cards.insert(g_wifi_cards.end(), artosyn_cards.begin(),
                       artosyn_cards.end());

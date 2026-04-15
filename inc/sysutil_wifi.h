@@ -52,6 +52,8 @@ struct WifiCardInfo {
   std::string power_high;
   std::string power_min;
   std::string power_max;
+  bool artosyn_daemon_running = false;
+  std::string artosyn_daemon_detail;
 };
 
 // Initializes cached Wi-Fi info (loading overrides and detecting cards).

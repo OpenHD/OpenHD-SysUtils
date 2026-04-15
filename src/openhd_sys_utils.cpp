@@ -387,6 +387,7 @@ int main(int argc, char* argv[]) {
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
     sysutil::init_update_worker();
+    sysutil::init_wifi_info();
     sysutil::start_openhd_services_if_needed();
     sysutil::start_ground_video_if_needed();
 
@@ -394,7 +395,6 @@ int main(int argc, char* argv[]) {
     sysutil::init_debug_info();
     gDebug = gDebug || sysutil::debug_enabled();
     sysutil::apply_hostname_if_enabled();
-    sysutil::init_wifi_info();
     bool wifi_retry_active = !sysutil::has_openhd_wifibroadcast_cards();
     std::size_t wifi_retry_attempt = 0;
     if (wifi_retry_active) {
