@@ -54,6 +54,8 @@ namespace {
 constexpr int kUpdatePollSeconds = 4;
 constexpr int kStableSeconds = 3;
 constexpr int kFailureBackoffSeconds = 30;
+constexpr const char* kUpdateInfoRequestType = "sysutil.update.info.request";
+constexpr const char* kUpdateInfoResponseType = "sysutil.update.info.response";
 
 std::atomic<bool> g_update_requested{false};
 std::atomic<bool> g_updating{false};
@@ -378,7 +380,8 @@ struct AptPackageInfo {
 };
 
 std::optional<AptPackageInfo> read_apt_policy(const std::string& package) {
-  auto output = run_command_out("apt-cache policy " + package + " 2>/dev/null");
+  auto output = run_command_out("apt-cache policy '" + escape_single_quotes(package) +
+                                "' 2>/dev/null");
   if (!output) {
     return std::nullopt;
   }
@@ -400,8 +403,12 @@ std::optional<AptPackageInfo> read_apt_policy(const std::string& package) {
 }
 
 bool install_apt_packages(const std::vector<std::string>& packages,
-                          std::ofstream& log) {
+                          std::ofstream& log,
+                          int* updated_count = nullptr) {
   if (packages.empty()) {
+    if (updated_count != nullptr) {
+      *updated_count = 0;
+    }
     return true;
   }
   if (!command_exists("apt-get") || !command_exists("apt-cache")) {
@@ -433,14 +440,14 @@ bool install_apt_packages(const std::vector<std::string>& packages,
     } else if (compare_versions(candidate, "gt", installed)) {
       should_install = true;
     }
-
     if (!should_install) {
       log_line(log, "Apt package up to date: " + pkg);
       continue;
     }
     set_update_status("Updating packages",
                       "Installing " + pkg + " (" + candidate + ").");
-    const std::string cmd = "apt-get install -y " + pkg +
+    const std::string cmd = "apt-get install -y '" + escape_single_quotes(pkg) +
+                            "'"
                             " >> '" + select_log_path() + "' 2>&1";
     if (!run_shell_command(cmd)) {
       log_line(log, "apt-get install failed for " + pkg);
@@ -450,6 +457,9 @@ bool install_apt_packages(const std::vector<std::string>& packages,
   }
 
   log_line(log, "Apt packages updated: " + std::to_string(updated));
+  if (updated_count != nullptr) {
+    *updated_count = updated;
+  }
   return true;
 }
 
@@ -482,8 +492,9 @@ std::optional<std::string> read_installed_version(const std::string& package) {
   if (!command_exists("dpkg-query")) {
     return std::nullopt;
   }
-  auto output = run_command_out(
-      "dpkg-query -W -f='${Version}' " + package + " 2>/dev/null");
+  auto output = run_command_out("dpkg-query -W -f='${Version}' '" +
+                                escape_single_quotes(package) +
+                                "' 2>/dev/null");
   if (!output) {
     return std::nullopt;
   }
@@ -948,6 +959,21 @@ std::string handle_update_request(const std::string& line) {
   g_update_requested = true;
   g_update_cv.notify_all();
   return "{\"type\":\"sysutil.update.response\",\"accepted\":true}\n";
+}
+
+bool is_update_info_request(const std::string& line) {
+  auto type = extract_string_field(line, "type");
+  return type.has_value() && *type == kUpdateInfoRequestType;
+}
+
+std::string handle_update_info_request(const std::string& line) {
+  (void)line;
+  std::ostringstream out;
+  out << "{\"type\":\"" << kUpdateInfoResponseType << "\""
+      << ",\"ok\":true"
+      << ",\"is_updating\":" << (g_updating.load() ? "true" : "false")
+      << "}\n";
+  return out.str();
 }
 
 bool is_updating() {

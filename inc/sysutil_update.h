@@ -37,6 +37,12 @@ bool is_update_request(const std::string& line);
 // Handles an update request and returns a response payload.
 std::string handle_update_request(const std::string& line);
 
+// Checks whether a message requests update package version information.
+bool is_update_info_request(const std::string& line);
+
+// Handles an update info request and returns update worker state.
+std::string handle_update_info_request(const std::string& line);
+
 // Returns true while an update is running.
 bool is_updating();
 

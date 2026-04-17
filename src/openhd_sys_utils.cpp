@@ -294,6 +294,12 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_update_info_request(line)) {
+                    const auto response = sysutil::handle_update_info_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_update_request(line)) {
                     const auto response = sysutil::handle_update_request(line);
                     if (gDebug) {
