@@ -9,7 +9,7 @@
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W", "id": 20, "display": "RADXA ZERO3W"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A", "id": 21, "display": "RADXA RK3588S"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
-    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RV1126", "id": 23, "display": "RV1126"},
+    {"key": "X_PLATFORM_TYPE_OPENHD_X21", "id": 28, "display": "X21(B)"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_RV110X", "id": 25, "display": "RV110X"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27},
@@ -122,8 +122,8 @@
       ]
     },
     {
-      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RV1126",
-      "log": "Detected Rockchip RV1126.",
+      "platform": "X_PLATFORM_TYPE_OPENHD_X21",
+      "log": "Detected OpenHD X21",
       "conditions": [
         {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1126"}
       ]
