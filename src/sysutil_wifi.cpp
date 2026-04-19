@@ -71,6 +71,8 @@ std::vector<WifiCardInfo> g_wifi_cards;
 bool g_wifi_initialized = false;
 bool is_openhd_wifibroadcast_type(const std::string& type_name);
 bool file_exists(const std::string& path);
+std::optional<std::string> read_file(const std::string& path);
+std::string normalize_id(std::string value);
 bool equal_after_uppercase(const std::string& lhs, const std::string& rhs);
 
 void log_wifi(const std::string& message) {
@@ -129,7 +131,43 @@ bool wait_for_artosyn_daemon_ready(int port,
   return is_tcp_listening_localhost(port);
 }
 
+bool has_artosyn_usb_hs_mode() {
+  std::error_code ec;
+  const std::filesystem::path usb_root("/sys/bus/usb/devices");
+  if (!std::filesystem::exists(usb_root, ec)) {
+    return false;
+  }
+  const auto artosyn_hs_vendor = normalize_id(kArtosynUsbVendorHsMode);
+  const auto artosyn_product = normalize_id(kArtosynUsbProduct);
+  for (const auto& entry : std::filesystem::directory_iterator(usb_root, ec)) {
+    if (ec) {
+      break;
+    }
+    const auto id_vendor_path = entry.path() / "idVendor";
+    const auto id_product_path = entry.path() / "idProduct";
+    if (!file_exists(id_vendor_path.string()) ||
+        !file_exists(id_product_path.string())) {
+      continue;
+    }
+    const auto vendor = normalize_id(read_file(id_vendor_path.string()).value_or(""));
+    const auto product = normalize_id(read_file(id_product_path.string()).value_or(""));
+    if (equal_after_uppercase(vendor, artosyn_hs_vendor) &&
+        equal_after_uppercase(product, artosyn_product)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int select_artosyn_daemon_intf(const std::vector<WifiCardInfo>& cards) {
+  for (const auto& card : cards) {
+    if (card.interface_name.rfind("artosyn_usb", 0) == 0) {
+      return 0;  // usb
+    }
+  }
+  if (has_artosyn_usb_hs_mode()) {
+    return 0;  // usb HS mode should not be forced into drv mode
+  }
   for (const auto& card : cards) {
     if (card.interface_name.rfind("ar_mdev", 0) == 0) {
       return 3;  // drv
@@ -218,8 +256,9 @@ std::pair<bool, std::string> ensure_artosyn_daemon_running(
   }
   last_attempt = now;
 
+  const bool prefer_binary_usb = has_artosyn_usb_hs_mode();
   bool started = false;
-  if (start_artosyn_daemon_via_service()) {
+  if (!prefer_binary_usb && start_artosyn_daemon_via_service()) {
     started = wait_for_artosyn_daemon_ready(
         kArtosynDaemonPort, std::chrono::milliseconds(2200));
     if (started) {
@@ -233,6 +272,14 @@ std::pair<bool, std::string> ensure_artosyn_daemon_running(
         kArtosynDaemonPort, std::chrono::milliseconds(2600));
     if (started) {
       return {true, "started-via-binary"};
+    }
+  }
+
+  if (prefer_binary_usb && start_artosyn_daemon_via_service()) {
+    started = wait_for_artosyn_daemon_ready(
+        kArtosynDaemonPort, std::chrono::milliseconds(2200));
+    if (started) {
+      return {true, "started-via-service"};
     }
   }
 
@@ -1431,10 +1478,6 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
     card.effective_type = "ARTOSYN";
     card.card_name = "Artosyn 8030";
     cards.push_back(card);
-  }
-
-  if (found_mdev > 0) {
-    return cards;
   }
 
   std::error_code ec;
