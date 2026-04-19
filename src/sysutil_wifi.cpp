@@ -131,6 +131,18 @@ bool wait_for_artosyn_daemon_ready(int port,
   return is_tcp_listening_localhost(port);
 }
 
+bool wait_for_artosyn_daemon_stopped(int port,
+                                     std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (!is_tcp_listening_localhost(port)) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+  }
+  return !is_tcp_listening_localhost(port);
+}
+
 bool has_artosyn_usb_hs_mode() {
   std::error_code ec;
   const std::filesystem::path usb_root("/sys/bus/usb/devices");
@@ -157,6 +169,44 @@ bool has_artosyn_usb_hs_mode() {
     }
   }
   return false;
+}
+
+bool stop_artosyn_daemon() {
+  bool attempted = false;
+  static constexpr std::array<const char*, 4> service_names = {
+      "openhd-artosyn", "artosyn", "artlink", "ar8030"};
+  if (has_systemctl()) {
+    for (const auto* service_name : service_names) {
+      const std::string cmd =
+          std::string("systemctl stop ") + service_name + " >/dev/null 2>&1";
+      attempted = run_cmd_quiet(cmd) || attempted;
+    }
+  }
+  if (has_service_cmd()) {
+    for (const auto* service_name : service_names) {
+      const std::string cmd =
+          std::string("service ") + service_name + " stop >/dev/null 2>&1";
+      attempted = run_cmd_quiet(cmd) || attempted;
+    }
+  }
+  static constexpr std::array<const char*, 5> daemon_patterns = {
+      "artosyn_daemon", "ar8030_daemon", "artlinkd", "bbd", "bb_daemon"};
+  for (const auto* pattern : daemon_patterns) {
+    const std::string cmd =
+        std::string("pkill -f ") + pattern + " >/dev/null 2>&1";
+    attempted = run_cmd_quiet(cmd) || attempted;
+  }
+  if (!attempted && !is_tcp_listening_localhost(kArtosynDaemonPort)) {
+    return true;
+  }
+  const bool stopped = wait_for_artosyn_daemon_stopped(
+      kArtosynDaemonPort, std::chrono::milliseconds(2500));
+  if (stopped) {
+    log_wifi("Stopped existing Artosyn daemon instance.");
+  } else {
+    log_wifi("Timed out waiting for existing Artosyn daemon to stop.");
+  }
+  return stopped;
 }
 
 int select_artosyn_daemon_intf(const std::vector<WifiCardInfo>& cards) {
@@ -287,6 +337,31 @@ std::pair<bool, std::string> ensure_artosyn_daemon_running(
     return {true, "running-after-start-attempt"};
   }
   return {false, "start-failed"};
+}
+
+std::pair<bool, std::string> restart_artosyn_daemon(
+    const std::vector<WifiCardInfo>& artosyn_cards) {
+  if (artosyn_cards.empty()) {
+    return {false, "not-applicable"};
+  }
+  if (!stop_artosyn_daemon()) {
+    return {false, "stop-failed"};
+  }
+  const int daemon_intf = select_artosyn_daemon_intf(artosyn_cards);
+  if (start_artosyn_daemon_via_binary(daemon_intf) &&
+      wait_for_artosyn_daemon_ready(kArtosynDaemonPort,
+                                    std::chrono::milliseconds(2600))) {
+    return {true, "restarted-via-binary"};
+  }
+  if (start_artosyn_daemon_via_service() &&
+      wait_for_artosyn_daemon_ready(kArtosynDaemonPort,
+                                    std::chrono::milliseconds(2200))) {
+    return {true, "restarted-via-service"};
+  }
+  if (is_tcp_listening_localhost(kArtosynDaemonPort)) {
+    return {true, "running-after-restart-attempt"};
+  }
+  return {false, "restart-failed"};
 }
 
 std::string card_short_description(const WifiCardInfo& card) {
@@ -1708,6 +1783,9 @@ std::string handle_wifi_update(const std::string& line) {
     }
   } else if (action == "refresh" || action == "detect") {
     ok = true;
+  } else if (action == "restart_artosyn") {
+    const auto daemon_state = restart_artosyn_daemon(wifi_cards());
+    ok = daemon_state.first;
   } else {
     ok = false;
   }
