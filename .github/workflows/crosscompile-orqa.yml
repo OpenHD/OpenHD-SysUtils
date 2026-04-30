@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - "release"
+      - "openhd-3.0"
 
 jobs:
   build:
@@ -42,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -# -u "${DOWNLOAD_KEY}" -O "${DOWNLOAD_URL}"
-          mv SDK-DTK_GCB_working_usb_and_88x2eu.sh OpenHD-SysUtils/SDK-DTK_GCB_working_usb_and_88x2eu.sh
+          mv SDK-DTK_GCB_working_usb_and_88x2eu.sh ./SDK-DTK_GCB_working_usb_and_88x2eu.sh
 
       - name: Install Orqa SDK
         env:
@@ -50,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$SDK_INSTALL_DIR"
-          sh OpenHD-SysUtils/SDK-DTK_GCB_working_usb_and_88x2eu.sh -y -d "$SDK_INSTALL_DIR"
+          sh ./SDK-DTK_GCB_working_usb_and_88x2eu.sh -y -d "$SDK_INSTALL_DIR"
 
       - name: Configure OpenHD SysUtils (Release)
         env:
@@ -58,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           source "$SDK_INSTALL_DIR/environment-setup-armv8a-poky-linux"
-          cmake -S OpenHD-SysUtils -B build-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build OpenHD SysUtils
         env:

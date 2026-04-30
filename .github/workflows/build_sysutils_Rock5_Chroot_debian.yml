@@ -7,6 +7,7 @@ on:
       - "main"
       - "dev-release"
       - "release"
+      - "openhd-3.0"
 
 jobs:
   build:
@@ -34,8 +35,8 @@ jobs:
         run: |
           git clone https://github.com/OpenHD/OpenHD-ChrootCompiler /opt/OpenHD-ChrootCompiler
           mkdir -p /opt/OpenHD-ChrootCompiler/additionalFiles
-          git clone https://github.com/OpenHD/OpenHD-SysUtils -b ${{ github.ref_name }} /opt/OpenHD-ChrootCompiler/additionalFiles/ --recursive
-          echo $CLOUDSMITH_API_KEY > /opt/OpenHD-ChrootCompiler/additionalFiles/cloudsmith_api_key.txt
+          cp -a "$GITHUB_WORKSPACE/." /opt/OpenHD-ChrootCompiler/additionalFiles/
+          printf '%s\n' "$CLOUDSMITH_API_KEY" > /opt/OpenHD-ChrootCompiler/additionalFiles/cloudsmith_api_key.txt
           echo "standard" > /opt/OpenHD-ChrootCompiler/additionalFiles/custom.txt
           echo "arm64" > /opt/OpenHD-ChrootCompiler/additionalFiles/arch.txt
           echo "debian" > /opt/OpenHD-ChrootCompiler/additionalFiles/distro.txt
@@ -58,6 +59,22 @@ jobs:
           cd /opt/OpenHD-ChrootCompiler/
           sudo apt update
           sudo bash install_dep.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          build_sh = Path("/opt/OpenHD-ChrootCompiler/build.sh")
+          text = build_sh.read_text()
+          needle = "mv OpenHD-ImageBuilder/stages/01-Baseimage stages/\n"
+          patch = (
+              needle
+              + "sed -i 's/WANTEDSIZE=\"6800000000\"/WANTEDSIZE=\"15000000000\"/' stages/01-Baseimage/01-run.sh\n"
+          )
+          if "WANTEDSIZE=\"15000000000\"" not in text:
+              if needle not in text:
+                  raise SystemExit("Could not find ImageBuilder stage import in build.sh")
+              text = text.replace(needle, patch, 1)
+              build_sh.write_text(text)
+          PY
           sudo bash build.sh rock5b $API_KEY debian bullseye
 
       - name: Collect artifacts
