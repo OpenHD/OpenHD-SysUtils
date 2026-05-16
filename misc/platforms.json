@@ -70,6 +70,22 @@
       ]
     },
     {
+      "platform": "X_PLATFORM_TYPE_RPI_5",
+      "log": "Raspberry Pi 5 detected (Raspberry Pi OS).",
+      "conditions": [
+        {"type": "file_exists", "path": "/boot/config.txt"},
+        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["Raspberry Pi 5 Model B"]}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_5",
+      "log": "Raspberry Pi 5 detected (Ubuntu OS).",
+      "conditions": [
+        {"type": "file_exists", "path": "/boot/firmware/config.txt"},
+        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["Raspberry Pi 5 Model B"]}
+      ]
+    },
+    {
       "platform": "X_PLATFORM_TYPE_OPENIPC_SIGMASTAR_UNDEFINED",
       "log": "Detected SigmaStar platform.",
       "conditions": [
