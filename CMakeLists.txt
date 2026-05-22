@@ -66,6 +66,7 @@ add_executable(openhd_sys_utils
     src/sysutil_led.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
+    src/sysutil_serial.cpp
     src/sysutil_settings.cpp
     src/sysutil_status.cpp
     src/sysutil_update.cpp
