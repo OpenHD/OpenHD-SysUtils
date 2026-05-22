@@ -111,6 +111,7 @@ std::vector<std::string> known_platform_serials() {
   }
   if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
       platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
+      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5 ||
       platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
       platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
     return {"/dev/ttyS2", "/dev/ttyS7"};

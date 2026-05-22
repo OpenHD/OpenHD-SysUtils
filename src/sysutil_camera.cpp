@@ -284,7 +284,8 @@ bool apply_camera_config_if_needed() {
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
     applied = apply_rock_config(profile, "radxa-zero3-");
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
-             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B) {
+             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
+             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5) {
     const auto prefix =
         platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A
             ? "rock-5a-"

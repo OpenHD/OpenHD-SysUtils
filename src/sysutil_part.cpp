@@ -706,6 +706,43 @@ bool ensure_fstab_entry(const std::string& device, const std::string& mountpoint
   return true;
 }
 
+void ensure_config_aliases() {
+  if (!is_mountpoint("/Config")) {
+    return;
+  }
+
+  std::error_code ec;
+  for (const auto* alias : {"/config", "/conf"}) {
+    ec.clear();
+    if (std::filesystem::is_symlink(alias, ec) && !ec) {
+      continue;
+    }
+    ec.clear();
+    if (std::filesystem::exists(alias, ec)) {
+      if (is_mountpoint(alias)) {
+        continue;
+      }
+      ec.clear();
+      if (!std::filesystem::is_empty(alias, ec)) {
+        continue;
+      }
+      ec.clear();
+      std::filesystem::remove(alias, ec);
+      if (ec) {
+        std::cerr << "Failed to remove empty config alias directory " << alias
+                  << ": " << ec.message() << std::endl;
+        continue;
+      }
+    }
+    ec.clear();
+    std::filesystem::create_directory_symlink("/Config", alias, ec);
+    if (ec) {
+      std::cerr << "Failed to create config alias " << alias
+                << " -> /Config: " << ec.message() << std::endl;
+    }
+  }
+}
+
 void mount_known_partitions() {
   const auto result = read_lsblk_rows();
   for (const auto& row : result.rows) {
@@ -719,6 +756,7 @@ void mount_known_partitions() {
       (void)mount_partition(device, "/Config", false);
     }
   }
+  ensure_config_aliases();
 }
 
 bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {

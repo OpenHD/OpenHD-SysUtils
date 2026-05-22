@@ -9,6 +9,7 @@
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W", "id": 20, "display": "RADXA ZERO3W"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A", "id": 21, "display": "RADXA RK3588S"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5", "id": 23, "display": "RADXA CM5"},
     {"key": "X_PLATFORM_TYPE_OPENHD_X21", "id": 28, "display": "X21(B)"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_RV110X", "id": 25, "display": "RV110X"},
@@ -89,6 +90,14 @@
       "conditions": [
         {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3588"},
         {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa ROCK 5A"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5",
+      "log": "Detected Rockchip RK3588 (Radxa CM5).",
+      "conditions": [
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3588"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa CM5"], "case_insensitive": true}
       ]
     },
     {

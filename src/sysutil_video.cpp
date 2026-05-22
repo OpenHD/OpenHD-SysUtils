@@ -145,7 +145,8 @@ bool is_rockchip_platform() {
     return info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
-           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B;
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5;
 }
 
 bool has_systemctl() {
@@ -328,7 +329,8 @@ bool generate_decode_scripts_and_services() {
     else if (type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
-             type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B) {
+             type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
+             type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5) {
 
         script_content += "# Rockchip Pipeline\n";
         script_content += "# Defaulting to H264/Auto. If H265 is needed, this script logic needs update or manual intervention.\n";

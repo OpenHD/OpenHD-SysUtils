@@ -16,7 +16,7 @@ Legend:
 - Create platform marker directories/files under /usr/local/share/openhd_platform or /usr/local/share/openhd/platform (old/initX20.sh, old/initRock.sh). Status: Needed.
 
 ## Partition and storage management
-- Platform-specific resize flows with mkfs, mount, fstab updates, external_video_part.txt marker, and reboot (old/initPi.sh, old/initRock.sh, old/initX20.sh, old/initX86.sh). Status: Needed.
+- Platform-specific recordings partition flow with mkfs, mount, fstab updates, and external_video_part.txt marker. Status: Done for generic FAT32 recordings partitions.
 - x86 example service for resizing partitions with a stored UUID (old/x86-core.sh). Status: Needed.
 
 ## Camera setup and configuration
@@ -38,7 +38,7 @@ Legend:
 - Package install hooks for motd, autologin, and cleanup (old/packaging/before-install.sh, old/packaging/after-install.sh). Status: Needed.
 
 ## LED control
-- Cross-platform LED control and patterns (old/led.sh, old/led_sys.sh). Status: Needed.
+- Cross-platform LED status patterns and platform LED selection. Status: Done for RPi, X20, Rock 5A/5B, CM5, CM3, and Zero3-style LEDs.
 
 ## EMMC utilities
 - Board detection and EMMC clear/flash with LED feedback (old/openhd_emmc_util.sh). Status: Needed.

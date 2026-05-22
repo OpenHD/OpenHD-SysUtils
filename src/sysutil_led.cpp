@@ -34,6 +34,9 @@
 #include <thread>
 #include <vector>
 
+#include "platforms_generated.h"
+#include "sysutil_platform.h"
+
 namespace sysutil {
 namespace {
 
@@ -91,6 +94,31 @@ bool contains_any_token(const std::string& haystack_lower,
     }
   }
   return false;
+}
+
+int find_led_by_name(const LedLayout& layout,
+                     const std::vector<std::string>& preferred_names) {
+  for (const auto& preferred : preferred_names) {
+    for (int i = 0; i < static_cast<int>(layout.leds.size()); ++i) {
+      if (layout.leds[i].name == preferred) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+int find_led_by_token(const LedLayout& layout,
+                      const std::vector<std::string>& preferred_tokens) {
+  for (const auto& token : preferred_tokens) {
+    for (int i = 0; i < static_cast<int>(layout.leds.size()); ++i) {
+      const auto lower = to_lower(layout.leds[i].name);
+      if (lower.find(token) != std::string::npos) {
+        return i;
+      }
+    }
+  }
+  return -1;
 }
 
 std::string build_status_text_lower(const StatusSnapshot& status) {
@@ -240,15 +268,30 @@ LedLayout discover_leds() {
     layout.leds.push_back(std::move(device));
   }
 
-  int green_idx = -1;
-  int red_idx = -1;
-  for (int i = 0; i < static_cast<int>(layout.leds.size()); ++i) {
-    const auto lower = to_lower(layout.leds[i].name);
-    if (green_idx < 0 && lower.find("green") != std::string::npos) {
-      green_idx = i;
+  const int platform = platform_info().platform_type;
+  int green_idx = find_led_by_token(layout, {"green"});
+  int red_idx = find_led_by_token(layout, {"red"});
+
+  if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
+      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
+      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5) {
+    const int rock_user_led = find_led_by_name(layout, {"user-led2"});
+    if (rock_user_led >= 0) {
+      green_idx = rock_user_led;
     }
-    if (red_idx < 0 && lower.find("red") != std::string::npos) {
-      red_idx = i;
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
+    const int board_led = find_led_by_name(layout, {"board-led"});
+    if (board_led >= 0) {
+      green_idx = board_led;
+    }
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
+    const int cm3_green = find_led_by_name(layout, {"pi-led-green", "user-led"});
+    const int cm3_red = find_led_by_name(layout, {"pwr-led-red"});
+    if (cm3_green >= 0) {
+      green_idx = cm3_green;
+    }
+    if (cm3_red >= 0) {
+      red_idx = cm3_red;
     }
   }
 
