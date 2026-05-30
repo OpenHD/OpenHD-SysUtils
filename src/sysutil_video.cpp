@@ -149,6 +149,27 @@ bool is_rockchip_platform() {
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5;
 }
 
+bool is_rk3566_platform() {
+    const auto& info = platform_info();
+    return info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3;
+}
+
+bool is_debian_bookworm() {
+    std::string os_release;
+    if (!read_file("/etc/os-release", os_release)) {
+        return false;
+    }
+
+    return os_release.find("VERSION_CODENAME=bookworm") != std::string::npos ||
+           os_release.find("VERSION_ID=\"12\"") != std::string::npos ||
+           os_release.find("VERSION_ID=12") != std::string::npos;
+}
+
+bool should_use_openhd_glide() {
+    return is_rk3566_platform() && is_debian_bookworm();
+}
+
 bool has_systemctl() {
     return std::filesystem::exists("/bin/systemctl") ||
            std::filesystem::exists("/usr/bin/systemctl");
@@ -219,7 +240,7 @@ void report_service_status(const std::string& openhd_state,
         desc << ", getty@tty1=" << getty_state;
     }
     if (!video_state.empty()) {
-        desc << ", openhd-video=" << video_state;
+        desc << ", video=" << video_state;
     }
 
     int severity = 0;
@@ -275,6 +296,18 @@ bool control_video_service(const std::string& action) {
     if (!has_systemctl()) {
         return false;
     }
+    if (should_use_openhd_glide()) {
+        if (action == "start") {
+            return run_cmd("systemctl start openhd-glide.service");
+        }
+        if (action == "restart") {
+            return run_cmd("systemctl restart openhd-glide.service");
+        }
+        if (action == "stop") {
+            return run_cmd("systemctl stop openhd-glide.service");
+        }
+        return false;
+    }
     if (action == "start") {
         return run_cmd("systemctl start openhd-video.service");
     }
@@ -311,6 +344,19 @@ void start_qopenhd_if_needed() {
 bool generate_decode_scripts_and_services() {
     const auto& info = platform_info();
     int type = info.platform_type;
+
+    if (should_use_openhd_glide()) {
+        if (!has_systemctl()) {
+            std::cerr << "systemctl not available, cannot enable openhd-glide." << std::endl;
+            return false;
+        }
+
+        run_cmd("systemctl disable --now openhd-video.service openhd-glide-autostart.service openhd-glide-stream.service >/dev/null 2>&1");
+        run_cmd("systemctl daemon-reload");
+        run_cmd("systemctl enable openhd-glide.service");
+        std::cout << "Enabled openhd-glide.service for RK3566 Bookworm OpenHD video." << std::endl;
+        return true;
+    }
 
     std::string script_content = "#!/bin/bash\n\n";
     bool supported = false;
@@ -387,8 +433,9 @@ void start_ground_video_if_needed() {
         if (has_systemctl()) {
             if (generate_decode_scripts_and_services()) {
                 run_cmd("systemctl daemon-reload");
-                if (!run_cmd("systemctl start openhd-video.service")) {
-                    std::cerr << "Failed to start openhd-video.service" << std::endl;
+                const std::string video_unit = should_use_openhd_glide() ? "openhd-glide.service" : "openhd-video.service";
+                if (!run_cmd("systemctl start " + video_unit)) {
+                    std::cerr << "Failed to start " << video_unit << std::endl;
                 }
             } else {
                 std::cerr << "Failed to generate decode scripts/services for rockchip." << std::endl;
@@ -398,11 +445,12 @@ void start_ground_video_if_needed() {
         }
 
         const std::string openhd_state = unit_state("openhd.service");
-        const std::string qopenhd_state = unit_state("qopenhd.service");
+        const bool qopenhd_requested = !should_use_openhd_glide();
+        const std::string qopenhd_state = qopenhd_requested ? unit_state("qopenhd.service") : "skipped";
         const std::string getty_state = unit_state("getty@tty1.service");
-        const std::string video_state = unit_state("openhd-video.service");
+        const std::string video_state = unit_state(should_use_openhd_glide() ? "openhd-glide.service" : "openhd-video.service");
         report_service_status(openhd_state, qopenhd_state, getty_state,
-                              video_state, true, true);
+                              video_state, qopenhd_requested, true);
         return;
     }
     if (!is_rpi_platform()) {
@@ -441,17 +489,18 @@ void start_openhd_services_if_needed() {
         std::cerr << "Failed to start openhd.service" << std::endl;
     }
 
-    if (ground) {
+    if (ground && !should_use_openhd_glide()) {
         start_qopenhd_if_needed();
     }
 
     const std::string openhd_state = unit_state("openhd.service");
-    const std::string qopenhd_state = ground ? unit_state("qopenhd.service") : "skipped";
+    const bool qopenhd_requested = ground && !should_use_openhd_glide();
+    const std::string qopenhd_state = qopenhd_requested ? unit_state("qopenhd.service") : "skipped";
     const std::string getty_state =
         rockchip ? unit_state("getty@tty1.service") : "n/a";
 
     report_service_status(openhd_state, qopenhd_state, getty_state, "",
-                          ground, rockchip);
+                          qopenhd_requested, rockchip);
 }
 
 bool is_video_request(const std::string& line) {
@@ -476,7 +525,7 @@ std::string handle_video_request(const std::string& line) {
             ok = false;
         }
     } else if (is_rockchip_platform()) {
-        pipeline = "systemd";
+        pipeline = should_use_openhd_glide() ? "openhd_glide" : "systemd";
         if (action == "start" || action == "restart") {
             if (!generate_decode_scripts_and_services()) {
                 ok = false;
