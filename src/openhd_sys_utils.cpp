@@ -393,9 +393,10 @@ int main(int argc, char* argv[]) {
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
+    sysutil::init_platform_info();
+    sysutil::start_openhd_glide_early_if_needed();
     sysutil::init_update_worker();
     sysutil::init_wifi_info();
-    sysutil::init_platform_info();
     sysutil::link_serial_ports();
     sysutil::init_debug_info();
     gDebug = gDebug || sysutil::debug_enabled();

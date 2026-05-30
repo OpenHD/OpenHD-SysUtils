@@ -12,6 +12,9 @@ bool generate_decode_scripts_and_services();
 // Starts the default ground video pipeline when run_mode is "ground".
 void start_ground_video_if_needed();
 
+// Starts OpenHD Glide before slower boot probes on RK3566 Bookworm ground units.
+void start_openhd_glide_early_if_needed();
+
 // Starts OpenHD services; starts QOpenHD in ground mode.
 void start_openhd_services_if_needed();
 

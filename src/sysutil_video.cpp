@@ -227,6 +227,33 @@ bool start_unit(const std::string& unit) {
     return run_cmd("systemctl start " + unit);
 }
 
+bool ensure_openhd_glide_early_dropin() {
+    std::error_code ec;
+    const std::string dropin_dir = "/etc/systemd/system/openhd-glide.service.d";
+    std::filesystem::create_directories(dropin_dir, ec);
+    if (ec) {
+        std::cerr << "Failed to create " << dropin_dir << ": " << ec.message() << std::endl;
+        return false;
+    }
+
+    const std::string dropin_path = dropin_dir + "/early-start.conf";
+    const std::string content =
+        "[Unit]\n"
+        "# Glide must show the UI while the rest of OpenHD is still booting.\n"
+        "# Reset upstream waits for network-online/openhd/udev-settle; those can\n"
+        "# take minutes on RK3566 and are not needed for the KMS connecting screen.\n"
+        "After=\n"
+        "Wants=\n"
+        "After=systemd-udev-trigger.service openhd-sys-utils.service\n"
+        "Wants=systemd-udev-trigger.service\n";
+
+    if (!write_file_if_changed(dropin_path, content)) {
+        std::cerr << "Failed to write " << dropin_path << std::endl;
+        return false;
+    }
+    return true;
+}
+
 void report_service_status(const std::string& openhd_state,
                            const std::string& qopenhd_state,
                            const std::string& getty_state,
@@ -352,6 +379,7 @@ bool generate_decode_scripts_and_services() {
         }
 
         run_cmd("systemctl disable --now openhd-video.service openhd-glide-autostart.service openhd-glide-stream.service >/dev/null 2>&1");
+        ensure_openhd_glide_early_dropin();
         run_cmd("systemctl daemon-reload");
         run_cmd("systemctl enable openhd-glide.service");
         std::cout << "Enabled openhd-glide.service for RK3566 Bookworm OpenHD video." << std::endl;
@@ -461,6 +489,23 @@ void start_ground_video_if_needed() {
     }
     if (!start_video_process()) {
         std::cerr << "Failed to start ground video pipeline." << std::endl;
+    }
+}
+
+void start_openhd_glide_early_if_needed() {
+    if (!is_ground_mode() || !should_use_openhd_glide()) {
+        return;
+    }
+    if (!has_systemctl()) {
+        std::cerr << "systemctl not available, cannot start openhd-glide early." << std::endl;
+        return;
+    }
+    if (!generate_decode_scripts_and_services()) {
+        std::cerr << "Failed to prepare openhd-glide for early start." << std::endl;
+        return;
+    }
+    if (!run_cmd("systemctl start openhd-glide.service")) {
+        std::cerr << "Failed to start openhd-glide.service early." << std::endl;
     }
 }
 
