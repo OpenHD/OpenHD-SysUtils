@@ -227,30 +227,49 @@ bool start_unit(const std::string& unit) {
     return run_cmd("systemctl start " + unit);
 }
 
-bool ensure_openhd_glide_early_dropin() {
+bool ensure_openhd_glide_early_unit() {
     std::error_code ec;
-    const std::string dropin_dir = "/etc/systemd/system/openhd-glide.service.d";
-    std::filesystem::create_directories(dropin_dir, ec);
+    const std::string unit_dir = "/etc/systemd/system";
+    std::filesystem::create_directories(unit_dir, ec);
     if (ec) {
-        std::cerr << "Failed to create " << dropin_dir << ": " << ec.message() << std::endl;
+        std::cerr << "Failed to create " << unit_dir << ": " << ec.message() << std::endl;
         return false;
     }
 
-    const std::string dropin_path = dropin_dir + "/early-start.conf";
+    const std::string unit_path = unit_dir + "/openhd-glide.service";
     const std::string content =
         "[Unit]\n"
+        "Description=OpenHD Glide KMS rendering stack\n"
+        "Documentation=https://github.com/OpenHD\n"
+        "DefaultDependencies=no\n"
         "# Glide must show the UI while the rest of OpenHD is still booting.\n"
-        "# Reset upstream waits for network-online/openhd/udev-settle; those can\n"
-        "# take minutes on RK3566 and are not needed for the KMS connecting screen.\n"
-        "After=\n"
-        "Wants=\n"
+        "# Do not wait for network-online/openhd/udev-settle; those can take\n"
+        "# minutes on RK3566 and are not needed for the KMS connecting screen.\n"
         "After=systemd-udev-trigger.service\n"
-        "Wants=systemd-udev-trigger.service\n";
+        "Wants=systemd-udev-trigger.service\n"
+        "Before=basic.target multi-user.target\n"
+        "StartLimitIntervalSec=30\n"
+        "StartLimitBurst=5\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        "ExecStart=/usr/local/lib/openhd-glide/openhd-glide-service-run\n"
+        "Restart=on-failure\n"
+        "RestartSec=1\n"
+        "KillMode=control-group\n"
+        "RuntimeDirectory=openhd-glide\n"
+        "RuntimeDirectoryMode=0755\n"
+        "TimeoutStopSec=10\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n";
 
-    if (!write_file_if_changed(dropin_path, content)) {
-        std::cerr << "Failed to write " << dropin_path << std::endl;
+    if (!write_file_if_changed(unit_path, content)) {
+        std::cerr << "Failed to write " << unit_path << std::endl;
         return false;
     }
+    ec.clear();
+    std::filesystem::remove("/etc/systemd/system/openhd-glide.service.d/early-start.conf", ec);
+    ec.clear();
+    std::filesystem::remove("/etc/systemd/system/openhd-glide.service.d", ec);
     return true;
 }
 
@@ -379,7 +398,7 @@ bool generate_decode_scripts_and_services() {
         }
 
         run_cmd("systemctl disable --now openhd-video.service openhd-glide-autostart.service openhd-glide-stream.service >/dev/null 2>&1");
-        ensure_openhd_glide_early_dropin();
+        ensure_openhd_glide_early_unit();
         run_cmd("systemctl daemon-reload");
         run_cmd("systemctl enable openhd-glide.service");
         std::cout << "Enabled openhd-glide.service for RK3566 Bookworm OpenHD video." << std::endl;
