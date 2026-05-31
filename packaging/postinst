@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+case "$1" in
+    configure|triggered)
+        if [ -x /usr/local/sbin/openhd-rk3566-bookworm-splash-setup ]; then
+            /usr/local/sbin/openhd-rk3566-bookworm-splash-setup || true
+        fi
+        ;;
+esac
+
+exit 0

@@ -114,6 +114,11 @@ install(TARGETS openhd_sys_utils
 )
 
 install(
+    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/sbin/openhd-rk3566-bookworm-splash-setup
+    DESTINATION /usr/local/sbin
+)
+
+install(
     FILES ${CMAKE_CURRENT_SOURCE_DIR}/systemd/openhd-sys-utils.service
     DESTINATION /lib/systemd/system
 )
@@ -127,6 +132,9 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst"
+)
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/cpack_project_config.cmake)
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpack_project_config.cmake.in

@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -e
+
+is_bookworm()
+{
+    grep -qs 'VERSION_CODENAME=bookworm' /etc/os-release ||
+        grep -qs 'VERSION_ID="12"' /etc/os-release ||
+        grep -qs 'VERSION_ID=12' /etc/os-release
+}
+
+is_rk3566()
+{
+    if [ -r /proc/device-tree/compatible ] &&
+        tr '\000' '\n' < /proc/device-tree/compatible 2>/dev/null |
+            grep -q '^rockchip,rk3566$'; then
+        return 0
+    fi
+
+    if [ -f /config/openhd/rock-rk3566.txt ] ||
+        [ -f /boot/openhd/rock-rk3566.txt ] ||
+        [ -f /boot/openhd/openhd/rock-rk3566.txt ]; then
+        return 0
+    fi
+
+    if command -v dpkg-query >/dev/null 2>&1 &&
+        dpkg-query -W -f='${Status}' u-boot-radxa-zero3 2>/dev/null |
+            grep -q 'install ok installed'; then
+        return 0
+    fi
+
+    return 1
+}
+
+set_u_boot_value()
+{
+    key="$1"
+    value="$2"
+    file=/etc/default/u-boot
+
+    [ -f "$file" ] || return 0
+
+    tmp="${file}.openhd-tmp"
+    if grep -Eq "^[#[:space:]]*${key}=" "$file"; then
+        sed -E "s|^[#[:space:]]*${key}=.*|${key}=\"${value}\"|" "$file" > "$tmp"
+    else
+        cp "$file" "$tmp"
+        printf '%s="%s"\n' "$key" "$value" >> "$tmp"
+    fi
+    cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+normalize_kernel_cmdline()
+{
+    file=/etc/kernel/cmdline
+    [ -f "$file" ] || return 0
+
+    old="$(cat "$file")"
+    new=""
+
+    for token in $old; do
+        case "$token" in
+            console=tty1|quiet|splash|loglevel=*|systemd.show_status=*|rd.systemd.show_status=*|vt.global_cursor_default=*)
+                ;;
+            *)
+                new="${new:+$new }$token"
+                ;;
+        esac
+    done
+
+    new="${new:+$new }quiet splash loglevel=0 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0"
+
+    if [ "$new" != "$old" ]; then
+        cp "$file" "${file}.openhd.bak"
+        printf '%s\n' "$new" > "$file"
+    fi
+}
+
+is_bookworm || exit 0
+is_rk3566 || exit 0
+
+set_u_boot_value U_BOOT_PROMPT 0
+set_u_boot_value U_BOOT_TIMEOUT 0
+normalize_kernel_cmdline
+
+if command -v u-boot-update >/dev/null 2>&1; then
+    u-boot-update || true
+fi
