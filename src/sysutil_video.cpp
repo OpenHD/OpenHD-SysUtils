@@ -244,7 +244,7 @@ bool ensure_openhd_glide_early_dropin() {
         "# take minutes on RK3566 and are not needed for the KMS connecting screen.\n"
         "After=\n"
         "Wants=\n"
-        "After=systemd-udev-trigger.service openhd-sys-utils.service\n"
+        "After=systemd-udev-trigger.service\n"
         "Wants=systemd-udev-trigger.service\n";
 
     if (!write_file_if_changed(dropin_path, content)) {
@@ -504,7 +504,7 @@ void start_openhd_glide_early_if_needed() {
         std::cerr << "Failed to prepare openhd-glide for early start." << std::endl;
         return;
     }
-    if (!run_cmd("systemctl start openhd-glide.service")) {
+    if (!run_cmd("systemctl start --no-block openhd-glide.service")) {
         std::cerr << "Failed to start openhd-glide.service early." << std::endl;
     }
 }
