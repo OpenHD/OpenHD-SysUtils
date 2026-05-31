@@ -390,11 +390,11 @@ int main(int argc, char* argv[]) {
     sysutil::init_leds();
     sysutil::set_status("sysutils.started", "Sysutils started",
                         "Waiting for OpenHD requests.");
+    sysutil::init_platform_info();
+    sysutil::start_openhd_glide_early_if_needed();
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
-    sysutil::init_platform_info();
-    sysutil::start_openhd_glide_early_if_needed();
     sysutil::init_update_worker();
     sysutil::init_wifi_info();
     sysutil::link_serial_ports();

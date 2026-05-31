@@ -493,7 +493,7 @@ void start_ground_video_if_needed() {
 }
 
 void start_openhd_glide_early_if_needed() {
-    if (!is_ground_mode() || !should_use_openhd_glide()) {
+    if (!should_use_openhd_glide()) {
         return;
     }
     if (!has_systemctl()) {
