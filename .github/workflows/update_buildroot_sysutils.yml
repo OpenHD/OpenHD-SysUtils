@@ -1,0 +1,47 @@
+name: Update SysUtils in X21 Buildroot
+
+on:
+  push:
+
+concurrency:
+  group: update-sysutils-x21-buildroot
+  cancel-in-progress: true
+
+jobs:
+  update-buildroot-package:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout X21 Buildroot
+        uses: actions/checkout@v4
+        with:
+          repository: OpenHD/openhd_x21b_buildroot
+          ref: master
+          token: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+
+      - name: Update OpenHD SysUtils version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_file="package/OpenHD-SysUtils/openhd-sysutils.mk"
+          version_line_count="$(grep -cE '^OPENHD_SYSUTILS_VERSION[[:space:]]*=' "${package_file}")"
+
+          if [ "${version_line_count}" -ne 1 ]; then
+            echo "Expected exactly one OPENHD_SYSUTILS_VERSION entry in ${package_file}, found ${version_line_count}."
+            exit 1
+          fi
+
+          sed -i -E \
+            "s|^OPENHD_SYSUTILS_VERSION[[:space:]]*=.*$|OPENHD_SYSUTILS_VERSION = ${GITHUB_SHA}|" \
+            "${package_file}"
+
+          if git diff --quiet -- "${package_file}"; then
+            echo "Buildroot already points to ${GITHUB_SHA}"
+            exit 0
+          fi
+
+          git config user.name "OpenHD-Automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${package_file}"
+          git commit -m "package/OpenHD-SysUtils: update to ${GITHUB_SHA}"
+          git push origin HEAD:master
