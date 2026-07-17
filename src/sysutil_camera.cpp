@@ -111,11 +111,14 @@ bool copy_file_if_exists(const std::string& from, const std::string& to) {
 }
 
 std::string select_boot_config_path() {
-  const std::string primary = "/boot/config.txt";
+  // Raspberry Pi OS Bookworm (required by Pi 5) mounts the active boot
+  // partition at /boot/firmware. /boot/config.txt may still exist as a legacy
+  // compatibility file, so always prefer the firmware path when present.
+  const std::string primary = "/boot/firmware/config.txt";
   if (read_file_exists(primary)) {
     return primary;
   }
-  const std::string fallback = "/boot/firmware/config.txt";
+  const std::string fallback = "/boot/config.txt";
   if (read_file_exists(fallback)) {
     return fallback;
   }
@@ -131,18 +134,16 @@ bool run_command(const std::string& command) {
   return true;
 }
 
-void apply_rpi_tuning(int cam_id) {
+void apply_rpi_tuning_in(const std::string& tuning_dir, int cam_id) {
+  const std::string orig = tuning_dir + "/imx477.json";
+  const std::string backup = tuning_dir + "/imx477_old.json";
   if (cam_id == 42) {
-    const std::string orig = "/usr/share/libcamera/ipa/rpi/vc4/imx477.json";
-    const std::string backup = "/usr/share/libcamera/ipa/rpi/vc4/imx477_old.json";
-    const std::string custom = "/usr/share/libcamera/ipa/rpi/vc4/arducam-477m.json";
+    const std::string custom = tuning_dir + "/arducam-477m.json";
     if (!read_file_exists(backup)) {
       copy_file_if_exists(orig, backup);
       copy_file_if_exists(custom, orig);
     }
   } else if (cam_id == 33) {
-    const std::string backup = "/usr/share/libcamera/ipa/rpi/vc4/imx477_old.json";
-    const std::string orig = "/usr/share/libcamera/ipa/rpi/vc4/imx477.json";
     if (read_file_exists(backup)) {
       std::error_code ec;
       std::filesystem::remove(orig, ec);
@@ -150,6 +151,16 @@ void apply_rpi_tuning(int cam_id) {
       std::filesystem::remove(backup, ec);
     }
   }
+}
+
+void apply_rpi_tuning(int cam_id) {
+  // Pi 5 uses the PiSP IPA pipeline; older Raspberry Pis use VC4. Check both
+  // system and local prefixes so packaged and locally installed libcamera
+  // layouts are supported by the same image.
+  apply_rpi_tuning_in("/usr/share/libcamera/ipa/rpi/pisp", cam_id);
+  apply_rpi_tuning_in("/usr/local/share/libcamera/ipa/rpi/pisp", cam_id);
+  apply_rpi_tuning_in("/usr/share/libcamera/ipa/rpi/vc4", cam_id);
+  apply_rpi_tuning_in("/usr/local/share/libcamera/ipa/rpi/vc4", cam_id);
 }
 
 bool update_boot_config(const std::string& dtoverlay_line,
@@ -165,6 +176,11 @@ bool update_boot_config(const std::string& dtoverlay_line,
     if (line.rfind("dtoverlay=gpio-key", 0) == 0) {
       continue;
     }
+    // An explicitly selected camera overlay must not compete with firmware
+    // camera auto-detection, which is enabled by default on Bookworm.
+    if (!cam_line.empty() && line.rfind("camera_auto_detect=", 0) == 0) {
+      continue;
+    }
     lines.push_back(line);
     if (line.find("#OPENHD_DYNAMIC_CONTENT_BEGIN#") != std::string::npos) {
       break;
@@ -174,6 +190,7 @@ bool update_boot_config(const std::string& dtoverlay_line,
 
   lines.push_back(dtoverlay_line);
   if (!cam_line.empty()) {
+    lines.push_back("camera_auto_detect=0");
     lines.push_back(cam_line);
   }
 
@@ -276,7 +293,9 @@ bool apply_camera_config_if_needed() {
   const int platform = platform_info().platform_type;
   const auto& profile = profile_opt.value();
   bool applied = false;
-  if (platform == X_PLATFORM_TYPE_RPI_4 || platform == X_PLATFORM_TYPE_RPI_5) {
+  if (platform == X_PLATFORM_TYPE_RPI_4 ||
+      platform == X_PLATFORM_TYPE_RPI_CM4 ||
+      platform == X_PLATFORM_TYPE_RPI_5) {
     applied = apply_rpi_config(profile, config.camera_type.value(), true);
   } else if (platform == X_PLATFORM_TYPE_RPI_OLD) {
     applied = apply_rpi_config(profile, config.camera_type.value(), false);

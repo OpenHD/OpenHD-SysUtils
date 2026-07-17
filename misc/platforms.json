@@ -4,8 +4,8 @@
     {"key": "X_PLATFORM_TYPE_X86", "id": 1, "display": "X86"},
     {"key": "X_PLATFORM_TYPE_RPI_OLD", "id": 10, "display": "RPI<=3"},
     {"key": "X_PLATFORM_TYPE_RPI_4", "id": 11, "display": "RPI 4"},
-    {"key": "X_PLATFORM_TYPE_RPI_CM4", "id": 12},
-    {"key": "X_PLATFORM_TYPE_RPI_5", "id": 12, "display": "RPI 5"},
+    {"key": "X_PLATFORM_TYPE_RPI_CM4", "id": 12, "display": "RPI CM4"},
+    {"key": "X_PLATFORM_TYPE_RPI_5", "id": 13, "display": "RPI 5"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W", "id": 20, "display": "RADXA ZERO3W"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A", "id": 21, "display": "RADXA RK3588S"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
@@ -56,18 +56,52 @@
       ]
     },
     {
-      "platform": "X_PLATFORM_TYPE_RPI_4",
-      "log": "Raspberry Pi 4 detected.",
+      "platform": "X_PLATFORM_TYPE_RPI_5",
+      "log": "Raspberry Pi 5 detected from device-tree model.",
       "conditions": [
-        {"type": "file_exists", "path": "/boot/config.txt"},
-        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["BCM2711"]}
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Raspberry Pi 5"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_5",
+      "log": "Raspberry Pi 5 family detected from BCM2712 compatibility.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["brcm,bcm2712", "BCM2712"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_5",
+      "log": "Raspberry Pi 5 family detected from BCM2712 CPU information.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["BCM2712"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_CM4",
+      "log": "Raspberry Pi Compute Module 4 detected.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Compute Module 4"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_4",
+      "log": "Raspberry Pi 4 detected from device-tree model.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Raspberry Pi 4"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_RPI_4",
+      "log": "Raspberry Pi 4 family detected from BCM2711 CPU information.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/cpuinfo", "values": ["BCM2711"], "case_insensitive": true}
       ]
     },
     {
       "platform": "X_PLATFORM_TYPE_RPI_OLD",
       "log": "Detected an older Raspberry Pi (<=3).",
       "conditions": [
-        {"type": "file_exists", "path": "/boot/config.txt"}
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Raspberry Pi"], "case_insensitive": true}
       ]
     },
     {

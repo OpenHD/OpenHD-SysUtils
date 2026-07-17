@@ -37,6 +37,7 @@ namespace {
 
 // Legacy debug.txt locations that enable debug mode once.
 constexpr const char* kDebugFilePaths[] = {
+    "/boot/firmware/openhd/debug.txt",
     "/boot/openhd/debug.txt",
 };
 // Persistent OpenHD debug marker for log verbosity.

@@ -158,10 +158,13 @@ bool compare_versions(const std::string& lhs, const std::string& op,
 }
 
 std::string select_log_path() {
-  const std::vector<std::string> candidates = {
-      "/boot/openhd/install-log.txt",
-      "/Config/openhd/install-log.txt",
-      "/var/log/openhd-update.log"};
+  std::vector<std::string> candidates;
+  if (path_is_regular_file("/boot/firmware/config.txt")) {
+    candidates.emplace_back("/boot/firmware/openhd/install-log.txt");
+  }
+  candidates.emplace_back("/boot/openhd/install-log.txt");
+  candidates.emplace_back("/Config/openhd/install-log.txt");
+  candidates.emplace_back("/var/log/openhd-update.log");
   for (const auto& candidate : candidates) {
     std::filesystem::path path(candidate);
     std::error_code ec;
@@ -306,6 +309,8 @@ bool has_update_payload(const std::filesystem::path& dir) {
 
 std::optional<UpdateSource> find_update_source() {
   const std::vector<std::filesystem::path> zip_candidates = {
+      "/boot/firmware/openhd/update/update.zip",
+      "/boot/firmware/openhd/update.zip",
       "/boot/openhd/update/update.zip",
       "/boot/openhd/update.zip",
       "/Config/openhd/update/update.zip",
@@ -327,6 +332,7 @@ std::optional<UpdateSource> find_update_source() {
   }
 
   const std::vector<std::filesystem::path> dir_candidates = {
+      "/boot/firmware/openhd/update",
       "/boot/openhd/update",
       "/Config/openhd/update",
       "/usr/local/share/openhd/update"};

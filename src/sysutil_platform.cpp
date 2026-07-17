@@ -274,27 +274,33 @@ void init_platform_info() {
   const bool has_cached_platform =
       (load_result == ConfigLoadResult::Loaded &&
        config.platform_type.has_value() && config.platform_name.has_value());
+  // Releases before Pi 5 detection assigned both CM4 and Pi 5 platform id 12.
+  // Re-detect this legacy cache entry once so Pi 5 migrates to its unique id.
+  const bool legacy_pi5_cache =
+      (has_cached_platform && config.platform_type.value() == 12 &&
+       config.platform_name.value() == "RPI 5");
   const bool cached_unknown_platform =
       (has_cached_platform &&
        config.platform_type.value() == X_PLATFORM_TYPE_UNKNOWN);
-  const bool use_cached_platform = has_cached_platform && !cached_unknown_platform;
+  const bool use_cached_platform =
+      has_cached_platform && !cached_unknown_platform && !legacy_pi5_cache;
 
   if (load_result == ConfigLoadResult::Loaded && config.platform_type &&
-      !cached_unknown_platform) {
+      !cached_unknown_platform && !legacy_pi5_cache) {
     g_platform_info.platform_type = *config.platform_type;
   } else {
     g_platform_info.platform_type = discover_platform_type();
   }
 
   if (load_result == ConfigLoadResult::Loaded && config.platform_name &&
-      !cached_unknown_platform) {
+      !cached_unknown_platform && !legacy_pi5_cache) {
     g_platform_info.platform_name = *config.platform_name;
   } else {
     g_platform_info.platform_name =
         platform_type_to_string(g_platform_info.platform_type);
   }
 
-  if ((!has_cached_platform || cached_unknown_platform) &&
+  if ((!has_cached_platform || cached_unknown_platform || legacy_pi5_cache) &&
       load_result != ConfigLoadResult::Error) {
     SysutilConfig updated_config = config;
     updated_config.platform_type = g_platform_info.platform_type;
