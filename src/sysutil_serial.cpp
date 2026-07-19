@@ -109,6 +109,9 @@ std::vector<std::string> known_platform_serials() {
       platform == X_PLATFORM_TYPE_RPI_CM4) {
     return {"/dev/serial0", "/dev/serial1"};
   }
+  if (platform == X_PLATFORM_TYPE_OPENHD_X21) {
+    return {"/dev/ttyS4"};
+  }
   if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
       platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
       platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5 ||
