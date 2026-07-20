@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        if [ -x /etc/init.d/openhd-sys-utils ]; then
+            if command -v invoke-rc.d >/dev/null 2>&1; then
+                invoke-rc.d openhd-sys-utils stop || true
+            elif [ ! -d /run/systemd/system ]; then
+                /etc/init.d/openhd-sys-utils stop || true
+            fi
+        fi
+        ;;
+esac
+
+exit 0

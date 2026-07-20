@@ -12,6 +12,8 @@ openhd_sys_utils
 *.a
 *.so
 *.d
+!init.d/
+!init.d/**
 *.obj
 
 # IDE/editor

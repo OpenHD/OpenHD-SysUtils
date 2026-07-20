@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "purge" ] && command -v update-rc.d >/dev/null 2>&1; then
+    update-rc.d openhd-sys-utils remove
+fi
+
+exit 0

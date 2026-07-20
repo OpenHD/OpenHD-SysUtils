@@ -123,6 +123,11 @@ install(
     DESTINATION /lib/systemd/system
 )
 
+install(
+    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/init.d/openhd-sys-utils
+    DESTINATION /etc/init.d
+)
+
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME "openhd-sys-utils")
 set(CPACK_PACKAGE_VENDOR "OpenHD")
@@ -131,9 +136,10 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenHD Team")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"
 )
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/cpack_project_config.cmake)
 configure_file(

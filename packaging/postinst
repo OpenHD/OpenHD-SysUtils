@@ -7,6 +7,20 @@ case "$1" in
         if [ -x /usr/local/sbin/openhd-rk3566-bookworm-splash-setup ]; then
             /usr/local/sbin/openhd-rk3566-bookworm-splash-setup || true
         fi
+
+        # X20 images use SysV init. Registering the script also works safely on
+        # systemd hosts, where the native unit with the same name takes priority.
+        if [ -x /etc/init.d/openhd-sys-utils ]; then
+            if command -v update-rc.d >/dev/null 2>&1; then
+                update-rc.d openhd-sys-utils defaults
+            fi
+
+            if command -v invoke-rc.d >/dev/null 2>&1; then
+                invoke-rc.d openhd-sys-utils start || true
+            elif [ ! -d /run/systemd/system ]; then
+                /etc/init.d/openhd-sys-utils start || true
+            fi
+        fi
         ;;
 esac
 

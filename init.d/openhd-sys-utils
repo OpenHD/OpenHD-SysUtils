@@ -1,0 +1,85 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          openhd-sys-utils
+# Required-Start:    $local_fs
+# Required-Stop:     $local_fs
+# Should-Start:      $remote_fs
+# Should-Stop:       $remote_fs
+# X-Start-Before:    openhd openhd-x20
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: OpenHD system utilities orchestrator
+# Description:       Starts the OpenHD system utilities daemon on X20 systems.
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
+DAEMON=/usr/local/bin/openhd_sys_utils
+NAME=openhd-sys-utils
+PIDFILE=/run/openhd-sys-utils.pid
+DESC="OpenHD system utilities"
+
+[ -r /lib/lsb/init-functions ] || exit 1
+. /lib/lsb/init-functions
+
+do_start()
+{
+    [ -x "$DAEMON" ] || return 5
+
+    start-stop-daemon --start --quiet --background --make-pidfile \
+        --pidfile "$PIDFILE" --exec "$DAEMON" --startas "$DAEMON" --
+}
+
+do_stop()
+{
+    start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 \
+        --pidfile "$PIDFILE" --exec "$DAEMON"
+    result=$?
+    [ "$result" -eq 2 ] && return 2
+    rm -f "$PIDFILE"
+    return "$result"
+}
+
+case "$1" in
+    start)
+        log_daemon_msg "Starting $DESC" "$NAME"
+        do_start
+        result=$?
+        case "$result" in
+            0) log_end_msg 0 ;;
+            1) log_progress_msg "already running"; log_end_msg 0; result=0 ;;
+            5) log_failure_msg "$DAEMON is not executable"; log_end_msg 1 ;;
+            *) log_end_msg 1 ;;
+        esac
+        exit "$result"
+        ;;
+    stop)
+        log_daemon_msg "Stopping $DESC" "$NAME"
+        do_stop
+        result=$?
+        case "$result" in
+            0|1) log_end_msg 0; exit 0 ;;
+            *) log_end_msg 1; exit "$result" ;;
+        esac
+        ;;
+    restart|force-reload)
+        log_daemon_msg "Restarting $DESC" "$NAME"
+        do_stop
+        stop_result=$?
+        if [ "$stop_result" -eq 2 ]; then
+            log_end_msg 1
+            exit 1
+        fi
+        do_start
+        result=$?
+        log_end_msg "$result"
+        exit "$result"
+        ;;
+    status)
+        status_of_proc -p "$PIDFILE" "$DAEMON" "$NAME"
+        exit $?
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|force-reload|status}"
+        exit 3
+        ;;
+esac

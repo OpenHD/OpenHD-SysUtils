@@ -1,0 +1,63 @@
+name: build_sysutils_package for Raspberry Pi 5 Bookworm
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "dev-release"
+      - "release"
+      - "openhd-3.0"
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and package arm64 Bookworm
+        uses: pguyot/arm-runner-action@98b8d5a3228f504a8bd54913ab1e23d70f369c6e
+        with:
+          base_image: https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2025-05-13/2025-05-13-raspios-bookworm-arm64-lite.img.xz
+          cpu: cortex-a76
+          image_additional_mb: 2000
+          copy_repository_path: /opt
+          copy_artifact_path: build_artifacts
+          import_github_env: true
+          shell: /bin/bash -euo pipefail
+          commands: |
+            cd "/opt/$(basename "$GITHUB_REPOSITORY")"
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              cmake g++ make dpkg-dev fakeroot
+            cmake -S . -B build -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+            cmake --build build --config "${BUILD_TYPE}"
+            cd build
+            cpack -G DEB
+            mkdir -p /opt/build_artifacts
+            cp -v ./*.deb /opt/build_artifacts/
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhd-sys-utils-rpi5-bookworm-arm64
+          path: build_artifacts/*.deb
+          if-no-files-found: error
+
+      - name: Push package
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: push
+          format: deb
+          owner: openhd
+          repo: dev-release
+          distro: raspbian
+          release: bookworm
+          republish: "true"
+          file: build_artifacts/*.deb

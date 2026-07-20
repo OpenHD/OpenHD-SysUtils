@@ -99,10 +99,17 @@ std::string trim(std::string value) {
     return value;
 }
 
-static constexpr const char* kDefaultGroundPipeline =
+static constexpr const char* kLegacyRpiGroundPipeline =
     "gst-launch-1.0 udpsrc port=5600 caps='application/x-rtp, media=(string)video, "
     "clock-rate=(int)90000, encoding-name=(string)H264' ! rtph264depay ! "
     "'video/x-h264,stream-format=byte-stream' ! fdsink | fpv_video0.bin /dev/stdin";
+
+static constexpr const char* kPi5GroundPipeline =
+    "gst-launch-1.0 -q udpsrc port=5600 "
+    "caps='application/x-rtp, media=(string)video, clock-rate=(int)90000, "
+    "encoding-name=(string)H264' ! rtph264depay ! h264parse ! "
+    "queue leaky=downstream max-size-buffers=2 ! avdec_h264 max-threads=4 ! "
+    "videoconvert ! autovideosink sync=false";
 
 static pid_t g_video_pid = -1;
 
@@ -331,7 +338,11 @@ bool start_video_process() {
     }
     if (pid == 0) {
         ::setsid();
-        ::execl("/bin/sh", "sh", "-c", kDefaultGroundPipeline, static_cast<char*>(nullptr));
+        const char* pipeline =
+            platform_info().platform_type == X_PLATFORM_TYPE_RPI_5
+                ? kPi5GroundPipeline
+                : kLegacyRpiGroundPipeline;
+        ::execl("/bin/sh", "sh", "-c", pipeline, static_cast<char*>(nullptr));
         _exit(127);
     }
     g_video_pid = pid;
@@ -409,13 +420,16 @@ bool generate_decode_scripts_and_services() {
     bool supported = false;
 
     // RPi Logic
-    if (type == X_PLATFORM_TYPE_RPI_OLD ||
+    if (type == X_PLATFORM_TYPE_RPI_5) {
+        script_content += "# Raspberry Pi 5 software decode pipeline\n";
+        script_content += std::string(kPi5GroundPipeline) + "\n";
+        supported = true;
+    } else if (type == X_PLATFORM_TYPE_RPI_OLD ||
         type == X_PLATFORM_TYPE_RPI_4 ||
-        type == X_PLATFORM_TYPE_RPI_CM4 ||
-        type == X_PLATFORM_TYPE_RPI_5) {
+        type == X_PLATFORM_TYPE_RPI_CM4) {
 
         script_content += "# RPi Pipeline\n";
-        script_content += "gst-launch-1.0 udpsrc port=5600 caps='application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264' ! rtph264depay ! 'video/x-h264,stream-format=byte-stream' ! fdsink | fpv_video0.bin /dev/stdin\n";
+        script_content += std::string(kLegacyRpiGroundPipeline) + "\n";
         supported = true;
     }
     // Rockchip Logic
