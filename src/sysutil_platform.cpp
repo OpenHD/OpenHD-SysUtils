@@ -191,6 +191,11 @@ std::optional<std::string> run_command_out(const char* command) {
 // Applies detection rules from platforms_generated.h to choose a platform.
 int discover_platform_type() {
   std::cout << "OpenHD Platform Discovery started." << std::endl;
+#ifdef OPENHD_X20_PACKAGE_BUILD
+  std::cout << "X20 package build: forcing Allwinner X20 platform." << std::endl;
+  return X_PLATFORM_TYPE_ALWINNER_X20;
+#endif
+
   std::unordered_map<std::string, std::optional<std::string>> file_cache;
   std::optional<std::string> arch_cache;
 
@@ -270,6 +275,24 @@ void init_platform_info() {
   }
   SysutilConfig config;
   const auto load_result = load_sysutil_config(config);
+
+#ifdef OPENHD_X20_PACKAGE_BUILD
+  g_platform_info.platform_type = X_PLATFORM_TYPE_ALWINNER_X20;
+  g_platform_info.platform_name =
+      platform_type_to_string(g_platform_info.platform_type);
+  if (load_result != ConfigLoadResult::Error) {
+    config.platform_type = g_platform_info.platform_type;
+    config.platform_name = g_platform_info.platform_name;
+    (void)write_sysutil_config(config);
+  }
+  write_platform_manifest(g_platform_info);
+  log_platform("Active platform: type=" +
+               std::to_string(g_platform_info.platform_type) +
+               " name=" + g_platform_info.platform_name +
+               " source=x20-package");
+  g_platform_initialized = true;
+  return;
+#endif
 
   const bool has_cached_platform =
       (load_result == ConfigLoadResult::Loaded &&
@@ -385,6 +408,16 @@ std::string handle_platform_update(const std::string& line) {
   } else {
     ok = false;
   }
+
+#ifdef OPENHD_X20_PACKAGE_BUILD
+  if (ok) {
+    info.platform_type = X_PLATFORM_TYPE_ALWINNER_X20;
+    info.platform_name = platform_type_to_string(info.platform_type);
+    config.platform_type = info.platform_type;
+    config.platform_name = info.platform_name;
+    ok = write_sysutil_config(config);
+  }
+#endif
 
   if (ok) {
     g_platform_info = info;

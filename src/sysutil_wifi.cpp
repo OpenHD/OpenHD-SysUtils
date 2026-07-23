@@ -47,6 +47,8 @@
 #include <unistd.h>
 #include <utility>
 
+#include "platforms_generated.h"
+#include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_config.h"
 
@@ -1237,6 +1239,13 @@ bool write_tx_power_overrides(
 }
 
 std::string driver_to_type(const std::string& driver_name) {
+  const bool x20 =
+      platform_info().platform_type == X_PLATFORM_TYPE_ALWINNER_X20;
+  if (x20) {
+    // X20 has a fixed RTL8812AU broadcast radio. Its older kernel does not
+    // always expose a useful or consistent DRIVER value through uevent.
+    return "OPENHD_RTL_88X2AU";
+  }
   if (equal_after_uppercase(driver_name, "rtl88xxau_ohd")) {
     return "OPENHD_RTL_88X2AU";
   }
@@ -1274,7 +1283,8 @@ std::string driver_to_type(const std::string& driver_name) {
   if (contains_after_uppercase(driver_name, "aicwf_sdio")) {
     return "AIC";
   }
-  if (contains_after_uppercase(driver_name, "88xxau")) {
+  if (contains_after_uppercase(driver_name, "8812au") ||
+      contains_after_uppercase(driver_name, "88xxau")) {
     return "RTL_88X2AU";
   }
   if (contains_after_uppercase(driver_name, "rtw_8822bu")) {

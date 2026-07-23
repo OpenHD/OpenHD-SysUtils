@@ -114,6 +114,12 @@ static constexpr const char* kPi5GroundPipeline =
 static pid_t g_video_pid = -1;
 
 bool is_ground_mode() {
+    // X20 is a dedicated air unit. Ignore stale or user-provided ground
+    // settings so no ground-side services or video pipeline can be started.
+    if (platform_info().platform_type == X_PLATFORM_TYPE_ALWINNER_X20) {
+        return false;
+    }
+
     SysutilConfig config;
     const auto load_result = load_sysutil_config(config);
     if (load_result == ConfigLoadResult::Error) {

@@ -36,8 +36,10 @@
 #include "sysutil_config.h"
 #include "sysutil_debug.h"
 #include "sysutil_hostname.h"
+#include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
+#include "platforms_generated.h"
 
 namespace sysutil {
 namespace {
@@ -53,6 +55,10 @@ constexpr const char* kDefaultNwEthernetCard = "RPI_ETHERNET_ONLY";
 constexpr int kDefaultVideoPort = 5000;
 constexpr int kDefaultTelemetryPort = 5600;
 constexpr const char* kDefaultMicrohardUsername = "admin";
+
+bool is_x20_platform() {
+  return platform_info().platform_type == X_PLATFORM_TYPE_ALWINNER_X20;
+}
 constexpr const char* kDefaultMicrohardPassword = "qwertz1";
 constexpr int kDefaultMicrohardVideoPort = 5910;
 constexpr int kDefaultMicrohardTelemetryPort = 5920;
@@ -244,6 +250,11 @@ void sync_settings_from_files() {
     changed = true;
   }
 
+  if (is_x20_platform() && config.run_mode.value_or("") != "air") {
+    config.run_mode = "air";
+    changed = true;
+  }
+
   if (changed) {
     (void)write_sysutil_config(config);
   }
@@ -280,6 +291,9 @@ std::string build_settings_response() {
     if (!configured_mode.empty()) {
       run_mode = configured_mode;
     }
+  }
+  if (is_x20_platform()) {
+    run_mode = "air";
   }
   const bool has_camera_type = config.camera_type.has_value();
   const bool has_camera2_type = config.camera2_type.has_value();
@@ -618,6 +632,12 @@ std::string handle_settings_update(const std::string& line) {
     config.debug_enabled = *debug_enabled;
     changed = true;
     debug_changed = true;
+  }
+
+  if (is_x20_platform() && config.run_mode.value_or("") != "air") {
+    config.run_mode = "air";
+    changed = true;
+    hostname_related_change = true;
   }
 
   bool ok = true;

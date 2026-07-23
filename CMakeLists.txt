@@ -3,6 +3,7 @@ project(openhd_sys_utils VERSION 1.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(OPENHD_X20_PACKAGE "Include the X20-only runtime assets" OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -83,6 +84,12 @@ target_include_directories(openhd_sys_utils PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+if(OPENHD_X20_PACKAGE)
+    target_compile_definitions(openhd_sys_utils PRIVATE
+        OPENHD_X20_PACKAGE_BUILD=1
+    )
+endif()
+
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
@@ -127,6 +134,31 @@ install(
     PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/init.d/openhd-sys-utils
     DESTINATION /etc/init.d
 )
+
+if(OPENHD_X20_PACKAGE)
+    install(
+        PROGRAMS
+            ${CMAKE_CURRENT_SOURCE_DIR}/old/x20/OpenHD_X20
+            ${CMAKE_CURRENT_SOURCE_DIR}/old/x20/temperature_guardian
+        DESTINATION /usr/local/bin/x20
+    )
+
+    install(
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/old/x20/runcam_v2
+        DESTINATION /usr/local/bin/x20
+        FILES_MATCHING
+        PATTERN "*.sh"
+        PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE
+    )
+
+    install(
+        FILES ${CMAKE_CURRENT_SOURCE_DIR}/old/temperature_guardian.service
+        DESTINATION /etc/systemd/system
+    )
+endif()
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME "openhd-sys-utils")

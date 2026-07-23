@@ -8,6 +8,15 @@ case "$1" in
             /usr/local/sbin/openhd-rk3566-bookworm-splash-setup || true
         fi
 
+        # The X20 package carries the legacy launcher. Preserve the platform
+        # markers consumed by OpenHD's X20 and RTL8812AU detection paths.
+        if [ -x /usr/local/bin/x20/OpenHD_X20 ]; then
+            mkdir -p /usr/local/share/openhd_platform/x20
+            mkdir -p /usr/local/share/openhd_platform/wifi_card_type/88xxau
+            touch /usr/local/share/openhd_platform/x20/hdzero
+            touch /usr/local/share/openhd_platform/wifi_card_type/88xxau/custom
+        fi
+
         # X20 images use SysV init. Registering the script also works safely on
         # systemd hosts, where the native unit with the same name takes priority.
         if [ -x /etc/init.d/openhd-sys-utils ]; then
