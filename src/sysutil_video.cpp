@@ -111,6 +111,9 @@ static constexpr const char* kPi5GroundPipeline =
     "queue leaky=downstream max-size-buffers=2 ! avdec_h264 max-threads=4 ! "
     "videoconvert ! autovideosink sync=false";
 
+static constexpr const char* kQOpenHdOverrideMarker =
+    "/usr/local/share/openhd/qopenhd_override.txt";
+
 static pid_t g_video_pid = -1;
 
 bool is_ground_mode() {
@@ -168,6 +171,11 @@ bool is_rk3566_platform() {
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3;
 }
 
+bool is_radxa_cm5_platform() {
+    return platform_info().platform_type ==
+           X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5;
+}
+
 bool is_debian_bookworm() {
     std::string os_release;
     if (!read_file("/etc/os-release", os_release)) {
@@ -179,7 +187,15 @@ bool is_debian_bookworm() {
            os_release.find("VERSION_ID=12") != std::string::npos;
 }
 
+bool cm5_qopenhd_override_requested() {
+    return is_radxa_cm5_platform() &&
+           std::filesystem::exists(kQOpenHdOverrideMarker);
+}
+
 bool should_use_openhd_glide() {
+    if (is_radxa_cm5_platform()) {
+        return !cm5_qopenhd_override_requested();
+    }
     return is_rk3566_platform() && is_debian_bookworm();
 }
 
@@ -418,8 +434,16 @@ bool generate_decode_scripts_and_services() {
         ensure_openhd_glide_early_unit();
         run_cmd("systemctl daemon-reload");
         run_cmd("systemctl enable openhd-glide.service");
-        std::cout << "Enabled openhd-glide.service for RK3566 Bookworm OpenHD video." << std::endl;
+        std::cout << "Enabled openhd-glide.service for OpenHD video." << std::endl;
         return true;
+    }
+
+    if (cm5_qopenhd_override_requested()) {
+        run_cmd("systemctl disable --now openhd-glide.service "
+                "openhd-glide-autostart.service openhd-glide-stream.service "
+                ">/dev/null 2>&1");
+        std::cout << "QOpenHD override marker found; disabled OpenHD Glide."
+                  << std::endl;
     }
 
     std::string script_content = "#!/bin/bash\n\n";
@@ -533,6 +557,11 @@ void start_ground_video_if_needed() {
 
 void start_openhd_glide_early_if_needed() {
     if (!should_use_openhd_glide()) {
+        if (cm5_qopenhd_override_requested() && has_systemctl()) {
+            run_cmd("systemctl disable --now openhd-glide.service "
+                    "openhd-glide-autostart.service "
+                    "openhd-glide-stream.service >/dev/null 2>&1");
+        }
         return;
     }
     if (!has_systemctl()) {
