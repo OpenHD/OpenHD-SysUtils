@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <set>
@@ -32,6 +33,7 @@
 #include <vector>
 
 #include "platforms_generated.h"
+#include "sysutil_config.h"
 #include "sysutil_platform.h"
 
 namespace sysutil {
@@ -48,6 +50,39 @@ constexpr std::array<SerialRole, 4> kSerialRoles{{
     {"OpenHD", "/dev/OpenHD"},
     {"Sbus", "/dev/Sbus"},
 }};
+
+struct PlatformUarts {
+  int platform_type;
+  const char* soc;
+  const char* telemetry_uart;
+  const char* openhd_uart;
+  const char* sbus_uart;
+};
+
+// Board UART assignments. The telemetry UART is linked as /dev/Flight on an
+// air unit and /dev/Tracker on a ground unit. A null entry means that function
+// has no fixed onboard UART; dynamically discovered serial devices may still
+// fill remaining functions.
+//
+// clang-format off
+constexpr std::array<PlatformUarts, 14> kPlatformUarts{{
+//  PLATFORM                                                    SOC                       TELEMETRY       OPENHD          SBUS
+    {X_PLATFORM_TYPE_ORQA,                                      "NXP i.MX family",         "/dev/ttymxc0",  "/dev/ttymxc1", nullptr},
+    {X_PLATFORM_TYPE_RPI_OLD,                                   "Broadcom BCM283x",        "/dev/serial0",  "/dev/serial1", nullptr},
+    {X_PLATFORM_TYPE_RPI_4,                                     "Broadcom BCM2711",        "/dev/serial0",  "/dev/serial1", nullptr},
+    {X_PLATFORM_TYPE_RPI_5,                                     "Broadcom BCM2712",        "/dev/serial0",  "/dev/serial1", nullptr},
+    {X_PLATFORM_TYPE_RPI_CM4,                                   "Broadcom BCM2711",        "/dev/serial0",  "/dev/serial1", nullptr},
+    {X_PLATFORM_TYPE_OPENHD_X21,                                "Rockchip RV1126",         "/dev/ttyS4",    nullptr,        nullptr},
+    {X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A,             "Rockchip RK3588S",        "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B,             "Rockchip RK3588",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5,                 "Rockchip RK3588",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3,                 "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W,              "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_ALWINNER_X20,                              "Allwinner X20",           "/dev/ttyS4",    nullptr,        nullptr},
+    {X_PLATFORM_TYPE_LUCKFOX_RV110X,                            "Rockchip RV1103/RV1106",  "/dev/ttyS3",    nullptr,        nullptr},
+    {X_PLATFORM_TYPE_LUCKFOX_LYRA,                              "Rockchip RK3506",         "/dev/ttyS3",    nullptr,        nullptr},
+}};
+// clang-format on
 
 void log_serial(const std::string& message) {
   std::cerr << "[sysutils][serial] " << message << std::endl;
@@ -98,33 +133,52 @@ bool is_scan_serial_name(const std::string& name) {
          has_prefix(name, "ttyACM") || has_prefix(name, "ttymxc");
 }
 
+bool is_air_unit() {
+  // X20 is a dedicated air platform.
+  if (platform_info().platform_type == X_PLATFORM_TYPE_ALWINNER_X20) {
+    return true;
+  }
+
+  SysutilConfig config;
+  if (load_sysutil_config(config) != ConfigLoadResult::Loaded ||
+      !config.run_mode.has_value()) {
+    return false;
+  }
+
+  std::string mode = *config.run_mode;
+  mode.erase(mode.begin(),
+             std::find_if(mode.begin(), mode.end(), [](unsigned char c) {
+               return !std::isspace(c);
+             }));
+  mode.erase(std::find_if(mode.rbegin(), mode.rend(), [](unsigned char c) {
+               return !std::isspace(c);
+             }).base(),
+             mode.end());
+  std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return mode == "air";
+}
+
 std::vector<std::string> known_platform_serials() {
   const int platform = platform_info().platform_type;
-  if (platform == X_PLATFORM_TYPE_ORQA) {
-    return {"/dev/ttymxc0", "/dev/ttymxc1"};
-  }
-  if (platform == X_PLATFORM_TYPE_RPI_OLD ||
-      platform == X_PLATFORM_TYPE_RPI_4 ||
-      platform == X_PLATFORM_TYPE_RPI_5 ||
-      platform == X_PLATFORM_TYPE_RPI_CM4) {
-    return {"/dev/serial0", "/dev/serial1"};
-  }
-  if (platform == X_PLATFORM_TYPE_OPENHD_X21) {
-    return {"/dev/ttyS4"};
-  }
-  if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5 ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
-      platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
-    return {"/dev/ttyS2", "/dev/ttyS7"};
-  }
-  if (platform == X_PLATFORM_TYPE_ALWINNER_X20) {
-    return {"/dev/ttyS4"};
-  }
-  if (platform == X_PLATFORM_TYPE_LUCKFOX_RV110X ||
-      platform == X_PLATFORM_TYPE_LUCKFOX_LYRA) {
-    return {"/dev/ttyS3"};
+  for (const auto& entry : kPlatformUarts) {
+    if (entry.platform_type != platform) {
+      continue;
+    }
+
+    std::vector<std::string> devices;
+    const std::array<const char*, 3> function_devices{{
+        entry.telemetry_uart,
+        entry.openhd_uart,
+        entry.sbus_uart,
+    }};
+    for (const char* device : function_devices) {
+      if (device != nullptr) {
+        devices.emplace_back(device);
+      }
+    }
+    return devices;
   }
   return {};
 }
@@ -170,16 +224,6 @@ void remove_stale_role_links() {
   }
 }
 
-std::size_t role_count_for_candidate_count(std::size_t candidate_count) {
-  if (candidate_count >= kSerialRoles.size()) {
-    return kSerialRoles.size();
-  }
-  if (candidate_count >= 2) {
-    return 2;
-  }
-  return candidate_count;
-}
-
 void create_role_link(const SerialRole& role, const std::string& target) {
   std::error_code ec;
   if (path_exists(role.link_path) &&
@@ -208,12 +252,18 @@ void link_serial_ports() {
     return;
   }
 
-  const auto role_count = role_count_for_candidate_count(candidates.size());
+  // The primary telemetry connector has a unit-dependent name. The remaining
+  // connectors keep the same functions on both Air and Ground.
+  const std::array<std::size_t, 3> active_role_indexes =
+      is_air_unit() ? std::array<std::size_t, 3>{{0, 2, 3}}
+                    : std::array<std::size_t, 3>{{1, 2, 3}};
+  const auto role_count = std::min(candidates.size(),
+                                   active_role_indexes.size());
   for (std::size_t i = 0; i < role_count; ++i) {
-    create_role_link(kSerialRoles[i], candidates[i]);
+    create_role_link(kSerialRoles[active_role_indexes[i]], candidates[i]);
   }
 
-  if (role_count < kSerialRoles.size()) {
+  if (role_count < active_role_indexes.size()) {
     log_serial("Only " + std::to_string(candidates.size()) +
                " serial port(s) found; linked priority roles only.");
   }
