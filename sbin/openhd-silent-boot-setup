@@ -91,6 +91,19 @@ set_u_boot_value()
     rm -f "$tmp"
 }
 
+configure_u_boot_menu()
+{
+    dir=/etc/u-boot-menu/conf.d
+    file="${dir}/openhd-silent-boot.conf"
+
+    mkdir -p "$dir"
+    {
+        printf '%s\n' '# OpenHD silent boot; overrides vendor menu settings.'
+        printf '%s\n' 'U_BOOT_PROMPT=0'
+        printf '%s\n' 'U_BOOT_TIMEOUT=1'
+    } > "$file"
+}
+
 normalize_kernel_cmdline()
 {
     file=/etc/kernel/cmdline
@@ -132,6 +145,7 @@ set_u_boot_value U_BOOT_PROMPT 0
 # u-boot-menu defines 0 as "wait forever"; 1 is the shortest automatic
 # timeout (one decisecond) and avoids leaving the board at the boot menu.
 set_u_boot_value U_BOOT_TIMEOUT 1
+configure_u_boot_menu
 normalize_kernel_cmdline
 disable_display_getty
 
