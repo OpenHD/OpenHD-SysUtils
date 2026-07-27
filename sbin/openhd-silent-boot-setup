@@ -1,0 +1,140 @@
+#!/bin/sh
+
+set -e
+
+is_bookworm()
+{
+    grep -qs 'VERSION_CODENAME=bookworm' /etc/os-release ||
+        grep -qs 'VERSION_ID="12"' /etc/os-release ||
+        grep -qs 'VERSION_ID=12' /etc/os-release
+}
+
+is_rk3566()
+{
+    if [ -r /proc/device-tree/compatible ]; then
+        if tr '\000' '\n' < /proc/device-tree/compatible 2>/dev/null |
+            grep -q '^rockchip,rk3566$'; then
+            return 0
+        fi
+    fi
+
+    if [ -f /config/openhd/rock-rk3566.txt ] ||
+        [ -f /boot/openhd/rock-rk3566.txt ] ||
+        [ -f /boot/openhd/openhd/rock-rk3566.txt ]; then
+        return 0
+    fi
+
+    if command -v dpkg-query >/dev/null 2>&1; then
+        if dpkg-query -W -f='${Status}' u-boot-radxa-zero3 2>/dev/null |
+            grep -q 'install ok installed'; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+is_rock5a()
+{
+    if [ -r /proc/device-tree/compatible ]; then
+        if tr '\000' '\n' < /proc/device-tree/compatible 2>/dev/null |
+            grep -Eq '^(radxa,rock-5a|rockchip,rk3588s)$'; then
+            return 0
+        fi
+    fi
+
+    if [ -r /proc/device-tree/model ]; then
+        if tr '\000' '\n' < /proc/device-tree/model 2>/dev/null |
+            grep -qi 'Radxa ROCK 5A'; then
+            return 0
+        fi
+    fi
+
+    if [ -f /config/openhd/rock-5a.txt ] ||
+        [ -f /boot/openhd/rock-5a.txt ] ||
+        [ -f /boot/openhd/openhd/rock-5a.txt ]; then
+        return 0
+    fi
+
+    if command -v dpkg-query >/dev/null 2>&1; then
+        if dpkg-query -W -f='${Status}' u-boot-rock-5a 2>/dev/null |
+            grep -q 'install ok installed'; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+is_silent_boot_platform()
+{
+    is_bookworm || return 1
+    is_rock5a || is_rk3566
+}
+
+set_u_boot_value()
+{
+    key="$1"
+    value="$2"
+    file=/etc/default/u-boot
+
+    [ -f "$file" ] || return 0
+
+    tmp="${file}.openhd-tmp"
+    if grep -Eq "^[#[:space:]]*${key}=" "$file"; then
+        sed -E "s|^[#[:space:]]*${key}=.*|${key}=\"${value}\"|" "$file" > "$tmp"
+    else
+        cp "$file" "$tmp"
+        printf '%s="%s"\n' "$key" "$value" >> "$tmp"
+    fi
+    cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+normalize_kernel_cmdline()
+{
+    file=/etc/kernel/cmdline
+    [ -f "$file" ] || return 0
+
+    old="$(cat "$file")"
+    new=""
+
+    for token in $old; do
+        case "$token" in
+            console=tty[0-9]*|quiet|splash|loglevel=*|logo.nologo|plymouth.enable=*|systemd.show_status=*|rd.systemd.show_status=*|vt.global_cursor_default=*)
+                ;;
+            *)
+                new="${new:+$new }$token"
+                ;;
+        esac
+    done
+
+    new="${new:+$new }quiet loglevel=0 logo.nologo plymouth.enable=0 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0"
+
+    if [ "$new" != "$old" ]; then
+        [ -e "${file}.openhd.bak" ] || cp "$file" "${file}.openhd.bak"
+        printf '%s\n' "$new" > "$file"
+    fi
+}
+
+disable_display_getty()
+{
+    command -v systemctl >/dev/null 2>&1 || return 0
+    [ -d /run/systemd/system ] || return 0
+
+    systemctl mask getty@tty1.service >/dev/null 2>&1 || true
+    systemctl stop getty@tty1.service >/dev/null 2>&1 || true
+}
+
+is_silent_boot_platform || exit 0
+
+set_u_boot_value U_BOOT_PROMPT 0
+# u-boot-menu defines 0 as "wait forever"; 1 is the shortest automatic
+# timeout (one decisecond) and avoids leaving the board at the boot menu.
+set_u_boot_value U_BOOT_TIMEOUT 1
+normalize_kernel_cmdline
+disable_display_getty
+
+if command -v u-boot-update >/dev/null 2>&1; then
+    u-boot-update || true
+fi

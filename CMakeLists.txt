@@ -121,7 +121,7 @@ install(TARGETS openhd_sys_utils
 )
 
 install(
-    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/sbin/openhd-rk3566-bookworm-splash-setup
+    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/sbin/openhd-silent-boot-setup
     DESTINATION /usr/local/sbin
 )
 
