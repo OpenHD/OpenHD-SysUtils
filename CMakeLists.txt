@@ -70,6 +70,7 @@ add_executable(openhd_sys_utils
     src/sysutil_serial.cpp
     src/sysutil_settings.cpp
     src/sysutil_status.cpp
+    src/sysutil_storage.cpp
     src/sysutil_update.cpp
     src/sysutil_part.cpp
     src/sysutil_video.cpp
@@ -168,7 +169,7 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenHD Team")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base, dosfstools, util-linux, parted")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"

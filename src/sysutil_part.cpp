@@ -25,6 +25,7 @@
 
 #include "sysutil_status.h"
 #include "sysutil_config.h"
+#include "sysutil_storage.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -36,6 +37,7 @@
 #include <optional>
 #include <map>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -745,15 +747,37 @@ void ensure_config_aliases() {
 
 void mount_known_partitions() {
   const auto result = read_lsblk_rows();
+  const auto safe_storage = list_safe_storage();
+  std::set<std::string> safe_devices;
+  for (const auto& entry : safe_storage) {
+    safe_devices.insert(entry.device);
+  }
+  constexpr const char* recording_uuid_path =
+      "/usr/local/share/OpenHD/SysUtils/recording_uuid";
+  std::ifstream selected_uuid_file(recording_uuid_path);
+  std::string selected_uuid;
+  std::getline(selected_uuid_file, selected_uuid);
+  bool selected_video_mounted = false;
+  if (!selected_uuid.empty()) {
+    const auto selected_device = find_device_by_uuid(selected_uuid);
+    if (selected_device && safe_devices.count(*selected_device) != 0) {
+      selected_video_mounted =
+          mount_partition(*selected_device, "/Video", false);
+    }
+  }
   for (const auto& row : result.rows) {
     if (row.type != "part") {
       continue;
     }
     const std::string device = "/dev/" + row.name;
-    if (is_label(row.label, "recordings")) {
-      (void)mount_partition(device, "/Video", false);
-    } else if (is_label(row.label, "openhd")) {
+    if (is_label(row.label, "openhd")) {
+      // /Config commonly lives on the boot/root disk. It stays hidden from
+      // storage management, but must still be mounted during startup.
       (void)mount_partition(device, "/Config", false);
+    } else if (safe_devices.count(device) != 0 &&
+               is_label(row.label, "recordings") &&
+               !selected_video_mounted) {
+      (void)mount_partition(device, "/Video", false);
     }
   }
   ensure_config_aliases();
@@ -830,7 +854,15 @@ bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
 std::string build_partitions_response() {
   const auto result = read_lsblk_rows();
   const auto& rows = result.rows;
-  const auto candidate = find_resize_candidate(result);
+  auto candidate = find_resize_candidate(result);
+  const auto safe_storage = list_safe_storage();
+  std::set<std::string> safe_devices;
+  for (const auto& entry : safe_storage) {
+    safe_devices.insert(entry.device);
+  }
+  if (candidate && safe_devices.count(candidate->device) == 0) {
+    candidate.reset();
+  }
   long long recordings_free_bytes = 0;
   bool recordings_found = false;
   std::vector<std::string> recordings_files;
@@ -842,6 +874,9 @@ std::string build_partitions_response() {
     if (disk.type != "disk") {
       continue;
     }
+    if (safe_devices.count("/dev/" + disk.name) == 0) {
+      continue;
+    }
     if (!first_disk) {
       out << ",";
     }
@@ -850,6 +885,9 @@ std::string build_partitions_response() {
     std::vector<LsblkRow> parts;
     for (const auto& row : rows) {
       if (row.type != "part") {
+        continue;
+      }
+      if (safe_devices.count("/dev/" + row.name) == 0) {
         continue;
       }
       if (result.has_parent) {

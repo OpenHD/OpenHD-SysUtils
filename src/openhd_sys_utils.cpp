@@ -30,6 +30,7 @@
 #include "sysutil_status.h"
 #include "sysutil_update.h"
 #include "sysutil_serial.h"
+#include "sysutil_storage.h"
 #include "sysutil_video.h"
 #include "sysutil_wifi.h"
 
@@ -303,6 +304,26 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                     (void)sendAll(fd, response);
                 } else if (sysutil::is_update_request(line)) {
                     const auto response = sysutil::handle_update_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_storage_list_request(line)) {
+                    const auto response = sysutil::build_storage_list_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_storage_action_request(line)) {
+                    const auto response =
+                        sysutil::handle_storage_action_request(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_storage_format_request(line)) {
+                    const auto response =
+                        sysutil::handle_storage_format_request(line);
                     if (gDebug) {
                         std::cout << "sysutils => " << response;
                     }
