@@ -95,6 +95,8 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
       extract_string_field(content, "camera_resolution_fps");
   config.camera2_resolution_fps =
       extract_string_field(content, "camera2_resolution_fps");
+  config.camera_port = extract_string_field(content, "camera_port");
+  config.camera2_port = extract_string_field(content, "camera2_port");
   config.ip_camera_address = extract_string_field(content, "ip_camera_address");
   config.ip_camera_pipeline =
       extract_string_field(content, "ip_camera_pipeline");
@@ -223,6 +225,8 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_int("camera2_type", config.camera2_type);
   write_string("camera_resolution_fps", config.camera_resolution_fps);
   write_string("camera2_resolution_fps", config.camera2_resolution_fps);
+  write_string("camera_port", config.camera_port);
+  write_string("camera2_port", config.camera2_port);
   write_string("ip_camera_address", config.ip_camera_address);
   write_string("ip_camera_pipeline", config.ip_camera_pipeline);
   write_string("camera2_ip_camera_address", config.camera2_ip_camera_address);

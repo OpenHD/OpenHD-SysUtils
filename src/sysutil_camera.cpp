@@ -215,7 +215,9 @@ bool update_boot_config(const std::string& dtoverlay_line,
 
 bool apply_rpi_config(const CameraProfile* primary_profile, int primary_cam_id,
                       const CameraProfile* secondary_profile,
-                      int secondary_cam_id, bool is_modern_rpi) {
+                      int secondary_cam_id, bool is_modern_rpi, bool is_rpi5,
+                      const std::string& primary_port,
+                      const std::string& secondary_port) {
   const CameraProfile* link_profile =
       primary_profile ? primary_profile : secondary_profile;
   if (!link_profile || !link_profile->rpi_link) {
@@ -239,13 +241,21 @@ bool apply_rpi_config(const CameraProfile* primary_profile, int primary_cam_id,
   }
   std::vector<std::string> cam_lines;
   if (primary_profile && primary_profile->rpi_ident) {
-    cam_lines.push_back("dtoverlay=" + std::string(primary_profile->rpi_ident));
+    auto camera_line =
+        "dtoverlay=" + std::string(primary_profile->rpi_ident);
+    // Raspberry Pi camera overlays default to CAM1; CAM0 needs the parameter.
+    if (is_rpi5 && primary_port == "cam0") {
+      camera_line += ",cam0";
+    }
+    cam_lines.push_back(camera_line);
   }
   if (secondary_profile && secondary_profile->rpi_ident) {
-    // Pi 5's second connector is CAM0. The primary camera remains on the
-    // default CAM1 connector for compatibility with earlier Pi models.
-    cam_lines.push_back(
-        "dtoverlay=" + std::string(secondary_profile->rpi_ident) + ",cam0");
+    auto camera_line =
+        "dtoverlay=" + std::string(secondary_profile->rpi_ident);
+    if (is_rpi5 && secondary_port == "cam0") {
+      camera_line += ",cam0";
+    }
+    cam_lines.push_back(camera_line);
   }
   return update_boot_config(dtoverlay_line, cam_lines);
 }
@@ -320,18 +330,27 @@ bool apply_camera_config_if_needed() {
         platform == X_PLATFORM_TYPE_RPI_5 && config.camera2_type.has_value()
             ? find_profile(*config.camera2_type)
             : std::nullopt;
+    const bool is_rpi5 = platform == X_PLATFORM_TYPE_RPI_5;
+    const std::string primary_port = config.camera_port.value_or("cam1");
+    std::string secondary_port = config.camera2_port.value_or("cam0");
+    if (is_rpi5 && primary_profile && secondary_profile &&
+        secondary_port == primary_port) {
+      secondary_port = primary_port == "cam0" ? "cam1" : "cam0";
+    }
     applied =
         apply_rpi_config(primary_profile ? &*primary_profile : nullptr,
                          config.camera_type.value_or(-1),
                          secondary_profile ? &*secondary_profile : nullptr,
-                         config.camera2_type.value_or(-1), true);
+                         config.camera2_type.value_or(-1), true, is_rpi5,
+                         primary_port, secondary_port);
   } else if (platform == X_PLATFORM_TYPE_RPI_OLD) {
     const auto profile = config.camera_type.has_value()
                              ? find_profile(*config.camera_type)
                              : std::nullopt;
     applied =
         apply_rpi_config(profile ? &*profile : nullptr,
-                         config.camera_type.value_or(-1), nullptr, -1, false);
+                         config.camera_type.value_or(-1), nullptr, -1, false,
+                         false, "cam1", "cam0");
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
     if (config.camera_type.has_value()) {

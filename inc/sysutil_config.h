@@ -48,6 +48,9 @@ struct SysutilConfig {
   std::optional<std::string> camera_resolution_fps;
   // Selected secondary camera resolution/fps string, e.g. 640x480@30.
   std::optional<std::string> camera2_resolution_fps;
+  // Raspberry Pi 5 CSI connector selection ("cam0" or "cam1").
+  std::optional<std::string> camera_port;
+  std::optional<std::string> camera2_port;
   // Initial IP-camera settings supplied by ImageWriter.
   std::optional<std::string> ip_camera_address;
   std::optional<std::string> ip_camera_pipeline;

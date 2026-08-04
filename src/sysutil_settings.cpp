@@ -184,6 +184,17 @@ void sync_settings_from_files() {
       parse_camera_field("camera", config.camera_type);
       parse_camera_field("camera2", config.camera2_type);
 
+      auto parse_camera_port = [&](const char* key,
+                                   std::optional<std::string>& out) {
+        if (auto port = extract_string_field(content, key);
+            port.has_value() && (*port == "cam0" || *port == "cam1")) {
+          out = *port;
+          changed = true;
+        }
+      };
+      parse_camera_port("camera_port", config.camera_port);
+      parse_camera_port("camera2_port", config.camera2_port);
+
       if (auto camera_resolution_fps =
               extract_string_field(content, "camera_resolution_fps");
           camera_resolution_fps.has_value()) {
