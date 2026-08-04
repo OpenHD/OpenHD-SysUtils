@@ -86,12 +86,22 @@ const std::vector<CameraProfile> kProfiles = {
 };
 
 std::optional<CameraProfile> find_profile(int id) {
-  auto it = std::find_if(kProfiles.begin(), kProfiles.end(),
-                         [id](const auto& profile) { return profile.id == id; });
+  auto it =
+      std::find_if(kProfiles.begin(), kProfiles.end(),
+                   [id](const auto& profile) { return profile.id == id; });
   if (it == kProfiles.end()) {
     return std::nullopt;
   }
   return *it;
+}
+
+bool is_configuration_only_camera(int id) {
+  // These camera types are configured by OpenHD itself and do not require a
+  // device-tree change. In particular, External IP (3) must be accepted by
+  // the sysutils setup API instead of being reported as an overlay failure.
+  return (id >= 0 && id <= 4) || (id >= 10 && id <= 16) ||
+         (id >= 70 && id <= 76) || id == 101 || id == 110 ||
+         (id >= 120 && id <= 125) || id == 255;
 }
 
 bool read_file_exists(const std::string& path) {
@@ -104,9 +114,8 @@ bool copy_file_if_exists(const std::string& from, const std::string& to) {
     return false;
   }
   std::error_code ec;
-  std::filesystem::copy_file(from, to,
-                             std::filesystem::copy_options::overwrite_existing,
-                             ec);
+  std::filesystem::copy_file(
+      from, to, std::filesystem::copy_options::overwrite_existing, ec);
   return !ec;
 }
 
@@ -164,7 +173,7 @@ void apply_rpi_tuning(int cam_id) {
 }
 
 bool update_boot_config(const std::string& dtoverlay_line,
-                        const std::string& cam_line) {
+                        const std::vector<std::string>& cam_lines) {
   const std::string path = select_boot_config_path();
   std::ifstream file(path);
   if (!file) {
@@ -178,7 +187,7 @@ bool update_boot_config(const std::string& dtoverlay_line,
     }
     // An explicitly selected camera overlay must not compete with firmware
     // camera auto-detection, which is enabled by default on Bookworm.
-    if (!cam_line.empty() && line.rfind("camera_auto_detect=", 0) == 0) {
+    if (!cam_lines.empty() && line.rfind("camera_auto_detect=", 0) == 0) {
       continue;
     }
     lines.push_back(line);
@@ -189,9 +198,9 @@ bool update_boot_config(const std::string& dtoverlay_line,
   file.close();
 
   lines.push_back(dtoverlay_line);
-  if (!cam_line.empty()) {
+  if (!cam_lines.empty()) {
     lines.push_back("camera_auto_detect=0");
-    lines.push_back(cam_line);
+    lines.insert(lines.end(), cam_lines.begin(), cam_lines.end());
   }
 
   std::ofstream out(path, std::ios::trunc);
@@ -204,24 +213,41 @@ bool update_boot_config(const std::string& dtoverlay_line,
   return true;
 }
 
-bool apply_rpi_config(const CameraProfile& profile, int cam_id, bool is_rpi4) {
-  if (!profile.rpi_link) {
+bool apply_rpi_config(const CameraProfile* primary_profile, int primary_cam_id,
+                      const CameraProfile* secondary_profile,
+                      int secondary_cam_id, bool is_modern_rpi) {
+  const CameraProfile* link_profile =
+      primary_profile ? primary_profile : secondary_profile;
+  if (!link_profile || !link_profile->rpi_link) {
     return false;
   }
-  apply_rpi_tuning(cam_id);
-  const std::string cma = profile.rpi_cma ? ",cma=400M" : "";
+  if (primary_profile) {
+    apply_rpi_tuning(primary_cam_id);
+  }
+  if (secondary_profile) {
+    apply_rpi_tuning(secondary_cam_id);
+  }
+  const bool requires_cma = (primary_profile && primary_profile->rpi_cma) ||
+                            (secondary_profile && secondary_profile->rpi_cma);
+  const std::string cma = requires_cma ? ",cma=400M" : "";
   std::string dtoverlay_line;
-  if (is_rpi4) {
-    dtoverlay_line = "dtoverlay=vc4-" + std::string(profile.rpi_link) +
-                     "-v3d" + cma;
+  if (is_modern_rpi) {
+    dtoverlay_line =
+        "dtoverlay=vc4-" + std::string(link_profile->rpi_link) + "-v3d" + cma;
   } else {
     dtoverlay_line = "dtoverlay=vc4-fkms-v3d" + cma;
   }
-  std::string cam_line;
-  if (profile.rpi_ident) {
-    cam_line = "dtoverlay=" + std::string(profile.rpi_ident);
+  std::vector<std::string> cam_lines;
+  if (primary_profile && primary_profile->rpi_ident) {
+    cam_lines.push_back("dtoverlay=" + std::string(primary_profile->rpi_ident));
   }
-  return update_boot_config(dtoverlay_line, cam_line);
+  if (secondary_profile && secondary_profile->rpi_ident) {
+    // Pi 5's second connector is CAM0. The primary camera remains on the
+    // default CAM1 connector for compatibility with earlier Pi models.
+    cam_lines.push_back(
+        "dtoverlay=" + std::string(secondary_profile->rpi_ident) + ",cam0");
+  }
+  return update_boot_config(dtoverlay_line, cam_lines);
 }
 
 bool update_extlinux(const std::string& overlay_line) {
@@ -282,34 +308,54 @@ bool apply_camera_config_if_needed() {
   if (load_sysutil_config(config) == ConfigLoadResult::Error) {
     return false;
   }
-  if (!config.camera_type.has_value()) {
-    return false;
-  }
-  const auto profile_opt = find_profile(config.camera_type.value());
-  if (!profile_opt.has_value()) {
-    return false;
-  }
-
   const int platform = platform_info().platform_type;
-  const auto& profile = profile_opt.value();
   bool applied = false;
   if (platform == X_PLATFORM_TYPE_RPI_4 ||
       platform == X_PLATFORM_TYPE_RPI_CM4 ||
       platform == X_PLATFORM_TYPE_RPI_5) {
-    applied = apply_rpi_config(profile, config.camera_type.value(), true);
+    const auto primary_profile = config.camera_type.has_value()
+                                     ? find_profile(*config.camera_type)
+                                     : std::nullopt;
+    const auto secondary_profile =
+        platform == X_PLATFORM_TYPE_RPI_5 && config.camera2_type.has_value()
+            ? find_profile(*config.camera2_type)
+            : std::nullopt;
+    applied =
+        apply_rpi_config(primary_profile ? &*primary_profile : nullptr,
+                         config.camera_type.value_or(-1),
+                         secondary_profile ? &*secondary_profile : nullptr,
+                         config.camera2_type.value_or(-1), true);
   } else if (platform == X_PLATFORM_TYPE_RPI_OLD) {
-    applied = apply_rpi_config(profile, config.camera_type.value(), false);
+    const auto profile = config.camera_type.has_value()
+                             ? find_profile(*config.camera_type)
+                             : std::nullopt;
+    applied =
+        apply_rpi_config(profile ? &*profile : nullptr,
+                         config.camera_type.value_or(-1), nullptr, -1, false);
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
-    applied = apply_rock_config(profile, "radxa-zero3-");
+    if (config.camera_type.has_value()) {
+      const auto profile = find_profile(*config.camera_type);
+      if (profile) {
+        applied = apply_rock_config(*profile, "radxa-zero3-");
+      }
+    }
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5) {
     const auto prefix =
-        platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A
-            ? "rock-5a-"
-            : "rock-5b-";
-    applied = apply_rock_config(profile, prefix);
+        platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ? "rock-5a-"
+                                                                  : "rock-5b-";
+    if (config.camera_type.has_value()) {
+      const auto profile = find_profile(*config.camera_type);
+      if (profile) {
+        applied = apply_rock_config(*profile, prefix);
+      }
+    }
+  }
+  if (!applied && config.camera_type.has_value() &&
+      is_configuration_only_camera(*config.camera_type)) {
+    applied = true;
   }
   if (applied) {
     set_status("camera_setup", "Camera settings applied",

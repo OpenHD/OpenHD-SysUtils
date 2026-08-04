@@ -197,6 +197,29 @@ void sync_settings_from_files() {
         changed = true;
       }
 
+      auto parse_ip_camera_string = [&](const char* key,
+                                        std::optional<std::string>& out,
+                                        std::size_t maximum_length) {
+        if (auto value = extract_string_field(content, key);
+            value.has_value() && !value->empty() &&
+            value->size() <= maximum_length) {
+          out = *value;
+          changed = true;
+        }
+      };
+      parse_ip_camera_string("ip_camera_address", config.ip_camera_address, 15);
+      parse_ip_camera_string("ip_camera_pipeline", config.ip_camera_pipeline,
+                             127);
+      parse_ip_camera_string("camera2_ip_camera_address",
+                             config.camera2_ip_camera_address, 15);
+      parse_ip_camera_string("camera2_ip_camera_pipeline",
+                             config.camera2_ip_camera_pipeline, 127);
+      if (auto bitrate = extract_int_field(content, "ip_camera_bitrate_mbits");
+          bitrate.has_value() && *bitrate >= 1 && *bitrate <= 20) {
+        config.ip_camera_bitrate_mbits = *bitrate;
+        changed = true;
+      }
+
       // Parse role
       auto role = extract_string_field(content, "role");
       if (role) {
@@ -301,10 +324,17 @@ std::string build_settings_response() {
       config.camera_resolution_fps.has_value();
   const bool has_camera2_resolution_fps =
       config.camera2_resolution_fps.has_value();
+  const bool has_ip_camera_address = config.ip_camera_address.has_value();
+  const bool has_ip_camera_pipeline = config.ip_camera_pipeline.has_value();
+  const bool has_camera2_ip_camera_address =
+      config.camera2_ip_camera_address.has_value();
+  const bool has_camera2_ip_camera_pipeline =
+      config.camera2_ip_camera_pipeline.has_value();
+  const bool has_ip_camera_bitrate_mbits =
+      config.ip_camera_bitrate_mbits.has_value();
   const bool wifi_enable_autodetect =
       config.wifi_enable_autodetect.value_or(kDefaultWifiEnableAutodetect);
-  const std::string wifi_wb_link_cards =
-      config.wifi_wb_link_cards.value_or("");
+  const std::string wifi_wb_link_cards = config.wifi_wb_link_cards.value_or("");
   const std::string wifi_hotspot_card = config.wifi_hotspot_card.value_or("");
   const bool wifi_monitor_card_emulate =
       config.wifi_monitor_card_emulate.value_or(false);
@@ -359,20 +389,46 @@ std::string build_settings_response() {
       << ",\"has_camera_resolution_fps\":"
       << (has_camera_resolution_fps ? "true" : "false")
       << ",\"camera_resolution_fps\":\""
-      << json_escape(has_camera_resolution_fps
-                         ? *config.camera_resolution_fps
-                         : "")
+      << json_escape(has_camera_resolution_fps ? *config.camera_resolution_fps
+                                               : "")
       << "\""
       << ",\"has_camera2_resolution_fps\":"
       << (has_camera2_resolution_fps ? "true" : "false")
       << ",\"camera2_resolution_fps\":\""
-      << json_escape(has_camera2_resolution_fps
-                         ? *config.camera2_resolution_fps
+      << json_escape(has_camera2_resolution_fps ? *config.camera2_resolution_fps
+                                                : "")
+      << "\""
+      << ",\"has_ip_camera_address\":"
+      << (has_ip_camera_address ? "true" : "false")
+      << ",\"ip_camera_address\":\""
+      << json_escape(has_ip_camera_address ? *config.ip_camera_address : "")
+      << "\""
+      << ",\"has_ip_camera_pipeline\":"
+      << (has_ip_camera_pipeline ? "true" : "false")
+      << ",\"ip_camera_pipeline\":\""
+      << json_escape(has_ip_camera_pipeline ? *config.ip_camera_pipeline : "")
+      << "\""
+      << ",\"has_camera2_ip_camera_address\":"
+      << (has_camera2_ip_camera_address ? "true" : "false")
+      << ",\"camera2_ip_camera_address\":\""
+      << json_escape(has_camera2_ip_camera_address
+                         ? *config.camera2_ip_camera_address
                          : "")
       << "\""
+      << ",\"has_camera2_ip_camera_pipeline\":"
+      << (has_camera2_ip_camera_pipeline ? "true" : "false")
+      << ",\"camera2_ip_camera_pipeline\":\""
+      << json_escape(has_camera2_ip_camera_pipeline
+                         ? *config.camera2_ip_camera_pipeline
+                         : "")
+      << "\""
+      << ",\"has_ip_camera_bitrate_mbits\":"
+      << (has_ip_camera_bitrate_mbits ? "true" : "false")
+      << ",\"ip_camera_bitrate_mbits\":"
+      << (has_ip_camera_bitrate_mbits ? *config.ip_camera_bitrate_mbits : 2)
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
-      << ",\"run_mode\":\""
-      << json_escape(has_run_mode ? run_mode : "ground") << "\""
+      << ",\"run_mode\":\"" << json_escape(has_run_mode ? run_mode : "ground")
+      << "\""
       << ",\"wifi_enable_autodetect\":"
       << (wifi_enable_autodetect ? "true" : "false")
       << ",\"wifi_wb_link_cards\":\"" << json_escape(wifi_wb_link_cards) << "\""
@@ -402,7 +458,8 @@ std::string build_settings_response() {
       << ",\"microhard_username\":\"" << json_escape(microhard_username) << "\""
       << ",\"microhard_password\":\"" << json_escape(microhard_password) << "\""
       << ",\"microhard_ip_air\":\"" << json_escape(microhard_ip_air) << "\""
-      << ",\"microhard_ip_ground\":\"" << json_escape(microhard_ip_ground) << "\""
+      << ",\"microhard_ip_ground\":\"" << json_escape(microhard_ip_ground)
+      << "\""
       << ",\"microhard_ip_range\":\"" << json_escape(microhard_ip_range) << "\""
       << ",\"microhard_video_port\":" << microhard_video_port
       << ",\"microhard_telemetry_port\":" << microhard_telemetry_port
@@ -453,6 +510,28 @@ std::string handle_settings_update(const std::string& line) {
           extract_string_field(line, "camera2_resolution_fps");
       camera2_resolution_fps.has_value()) {
     config.camera2_resolution_fps = *camera2_resolution_fps;
+    changed = true;
+  }
+
+  auto update_ip_camera_string = [&](const char* key,
+                                     std::optional<std::string>& out,
+                                     std::size_t maximum_length) {
+    if (auto value = extract_string_field(line, key);
+        value.has_value() && !value->empty() &&
+        value->size() <= maximum_length) {
+      out = *value;
+      changed = true;
+    }
+  };
+  update_ip_camera_string("ip_camera_address", config.ip_camera_address, 15);
+  update_ip_camera_string("ip_camera_pipeline", config.ip_camera_pipeline, 127);
+  update_ip_camera_string("camera2_ip_camera_address",
+                          config.camera2_ip_camera_address, 15);
+  update_ip_camera_string("camera2_ip_camera_pipeline",
+                          config.camera2_ip_camera_pipeline, 127);
+  if (auto bitrate = extract_int_field(line, "ip_camera_bitrate_mbits");
+      bitrate.has_value() && *bitrate >= 1 && *bitrate <= 20) {
+    config.ip_camera_bitrate_mbits = *bitrate;
     changed = true;
   }
 
