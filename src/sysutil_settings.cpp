@@ -196,6 +196,24 @@ void sync_settings_from_files() {
         config.camera2_resolution_fps = *camera2_resolution_fps;
         changed = true;
       }
+      if (auto camera2_ip_camera_address =
+              extract_string_field(content, "camera2_ip_camera_address");
+          camera2_ip_camera_address.has_value()) {
+        config.camera2_ip_camera_address = *camera2_ip_camera_address;
+        changed = true;
+      }
+      if (auto camera2_ip_camera_pipeline =
+              extract_string_field(content, "camera2_ip_camera_pipeline");
+          camera2_ip_camera_pipeline.has_value()) {
+        config.camera2_ip_camera_pipeline = *camera2_ip_camera_pipeline;
+        changed = true;
+      }
+      if (auto ip_camera_bitrate_mbits =
+              extract_int_field(content, "ip_camera_bitrate_mbits");
+          ip_camera_bitrate_mbits.has_value()) {
+        config.ip_camera_bitrate_mbits = *ip_camera_bitrate_mbits;
+        changed = true;
+      }
 
       // Parse role
       auto role = extract_string_field(content, "role");
@@ -301,6 +319,12 @@ std::string build_settings_response() {
       config.camera_resolution_fps.has_value();
   const bool has_camera2_resolution_fps =
       config.camera2_resolution_fps.has_value();
+  const bool has_camera2_ip_camera_address =
+      config.camera2_ip_camera_address.has_value();
+  const bool has_camera2_ip_camera_pipeline =
+      config.camera2_ip_camera_pipeline.has_value();
+  const bool has_ip_camera_bitrate_mbits =
+      config.ip_camera_bitrate_mbits.has_value();
   const bool wifi_enable_autodetect =
       config.wifi_enable_autodetect.value_or(kDefaultWifiEnableAutodetect);
   const std::string wifi_wb_link_cards =
@@ -370,6 +394,24 @@ std::string build_settings_response() {
                          ? *config.camera2_resolution_fps
                          : "")
       << "\""
+      << ",\"has_camera2_ip_camera_address\":"
+      << (has_camera2_ip_camera_address ? "true" : "false")
+      << ",\"camera2_ip_camera_address\":\""
+      << json_escape(has_camera2_ip_camera_address
+                         ? *config.camera2_ip_camera_address
+                         : "")
+      << "\""
+      << ",\"has_camera2_ip_camera_pipeline\":"
+      << (has_camera2_ip_camera_pipeline ? "true" : "false")
+      << ",\"camera2_ip_camera_pipeline\":\""
+      << json_escape(has_camera2_ip_camera_pipeline
+                         ? *config.camera2_ip_camera_pipeline
+                         : "")
+      << "\""
+      << ",\"has_ip_camera_bitrate_mbits\":"
+      << (has_ip_camera_bitrate_mbits ? "true" : "false")
+      << ",\"ip_camera_bitrate_mbits\":"
+      << (has_ip_camera_bitrate_mbits ? *config.ip_camera_bitrate_mbits : 0)
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
       << ",\"run_mode\":\""
       << json_escape(has_run_mode ? run_mode : "ground") << "\""

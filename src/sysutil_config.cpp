@@ -95,6 +95,12 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
       extract_string_field(content, "camera_resolution_fps");
   config.camera2_resolution_fps =
       extract_string_field(content, "camera2_resolution_fps");
+  config.camera2_ip_camera_address =
+      extract_string_field(content, "camera2_ip_camera_address");
+  config.camera2_ip_camera_pipeline =
+      extract_string_field(content, "camera2_ip_camera_pipeline");
+  config.ip_camera_bitrate_mbits =
+      extract_int_field(content, "ip_camera_bitrate_mbits");
   config.run_mode = extract_string_field(content, "run_mode");
   config.firstboot = extract_bool_field(content, "firstboot");
   config.init_system = extract_string_field(content, "init_system");
@@ -214,6 +220,9 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_int("camera2_type", config.camera2_type);
   write_string("camera_resolution_fps", config.camera_resolution_fps);
   write_string("camera2_resolution_fps", config.camera2_resolution_fps);
+  write_string("camera2_ip_camera_address", config.camera2_ip_camera_address);
+  write_string("camera2_ip_camera_pipeline", config.camera2_ip_camera_pipeline);
+  write_int("ip_camera_bitrate_mbits", config.ip_camera_bitrate_mbits);
   write_string("run_mode", config.run_mode);
   write_bool("firstboot", config.firstboot);
   write_string("init_system", config.init_system);

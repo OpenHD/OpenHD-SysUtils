@@ -48,6 +48,11 @@ struct SysutilConfig {
   std::optional<std::string> camera_resolution_fps;
   // Selected secondary camera resolution/fps string, e.g. 640x480@30.
   std::optional<std::string> camera2_resolution_fps;
+  // Image-writer settings for a secondary managed IP camera.
+  std::optional<std::string> camera2_ip_camera_address;
+  std::optional<std::string> camera2_ip_camera_pipeline;
+  // Link budget reserved for an unmanaged IP camera.
+  std::optional<int> ip_camera_bitrate_mbits;
   // Requested boot mode ("air" or "ground").
   std::optional<std::string> run_mode;
   // First-boot gate for one-time detection tasks.
