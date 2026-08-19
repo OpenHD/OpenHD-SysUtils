@@ -27,6 +27,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -37,6 +38,12 @@
 #include "platforms_generated.h"
 #include "sysutil_platform.h"
 
+#ifdef OPENHD_HAVE_X21_LED
+extern "C" {
+#include <ohdled.h>
+}
+#endif
+
 namespace sysutil {
 namespace {
 
@@ -44,7 +51,8 @@ enum class LedPatternType {
   Off,
   Solid,
   Blink,
-  Alternate
+  Alternate,
+  Rainbow
 };
 
 enum class LedTarget {
@@ -325,7 +333,7 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
                                  -1};
   LedPattern warn_pattern{LedPatternType::Blink, LedTarget::Secondary, 200, 200, -1};
   LedPattern starting_pattern{LedPatternType::Blink, LedTarget::Primary, 200, 200, -1};
-  LedPattern ready_pattern{LedPatternType::Solid, LedTarget::Primary, 200, 200, -1};
+  LedPattern ready_pattern{LedPatternType::Rainbow, LedTarget::Primary, 200, 200, -1};
   LedPattern stopped_pattern{LedPatternType::Off, LedTarget::Both, 200, 200, -1};
   LedPattern partition_pattern{LedPatternType::Blink, LedTarget::Both, 120, 120, -1};
   LedPattern sysutils_started{LedPatternType::Blink, LedTarget::Both, 120, 120, 3};
@@ -379,6 +387,92 @@ LedPattern select_pattern_from_status(const StatusSnapshot& status) {
   return ready_pattern;
 }
 
+#ifdef OPENHD_HAVE_X21_LED
+constexpr char kX21LedDevice[] = "/dev/ttyS3";
+int g_x21_fd = -1;
+
+led_color x21_color_for_target(LedTarget target) {
+  switch (target) {
+    case LedTarget::Secondary:
+      return led_color{255, 0, 0};
+    case LedTarget::Both:
+      return led_color{255, 255, 0};
+    case LedTarget::Primary:
+    default:
+      return led_color{0, 255, 0};
+  }
+}
+
+std::uint16_t x21_delay_ms(int ms) {
+  if (ms < 0) {
+    return 0;
+  }
+  if (ms > 0xFFFF) {
+    return 0xFFFF;
+  }
+  return static_cast<std::uint16_t>(ms);
+}
+
+bool init_x21_leds() {
+  g_x21_fd = led_open(kX21LedDevice);
+  if (g_x21_fd < 0) {
+    return false;
+  }
+  led_off(g_x21_fd);
+  return true;
+}
+
+void apply_x21_rainbow() {
+  static const led_color kRainbow[] = {
+      {255, 0, 0},   {255, 128, 0}, {255, 255, 0}, {128, 255, 0},
+      {0, 255, 0},   {0, 255, 128}, {0, 255, 255}, {0, 128, 255},
+      {0, 0, 255},   {128, 0, 255}, {255, 0, 255}, {255, 0, 128},
+  };
+  constexpr std::size_t kCount = sizeof(kRainbow) / sizeof(kRainbow[0]);
+  led_anim_frame frames[kCount];
+  for (std::size_t i = 0; i < kCount; ++i) {
+    frames[i].color = kRainbow[i];
+    frames[i].delay_ms = 150;
+  }
+  led_breathe(g_x21_fd, frames, kCount, 1, 0, 0);
+}
+
+void apply_x21_pattern(const LedPattern& pattern) {
+  if (g_x21_fd < 0) {
+    return;
+  }
+  switch (pattern.type) {
+    case LedPatternType::Off:
+      led_off(g_x21_fd);
+      break;
+    case LedPatternType::Solid:
+      led_static_color(g_x21_fd, x21_color_for_target(pattern.target), 1, 0, 0);
+      break;
+    case LedPatternType::Blink: {
+      led_anim_frame frames[2];
+      frames[0].color = x21_color_for_target(pattern.target);
+      frames[0].delay_ms = x21_delay_ms(pattern.on_ms);
+      frames[1].color = led_color{0, 0, 0};
+      frames[1].delay_ms = x21_delay_ms(pattern.off_ms);
+      led_blink(g_x21_fd, frames, 2, 1, 0, 0);
+      break;
+    }
+    case LedPatternType::Alternate: {
+      led_anim_frame frames[2];
+      frames[0].color = x21_color_for_target(LedTarget::Primary);
+      frames[0].delay_ms = x21_delay_ms(pattern.on_ms);
+      frames[1].color = x21_color_for_target(LedTarget::Secondary);
+      frames[1].delay_ms = x21_delay_ms(pattern.off_ms);
+      led_blink(g_x21_fd, frames, 2, 1, 0, 0);
+      break;
+    }
+    case LedPatternType::Rainbow:
+      apply_x21_rainbow();
+      break;
+  }
+}
+#endif  // OPENHD_HAVE_X21_LED
+
 void worker_loop() {
   int last_pattern_id = -1;
   int remaining = -1;
@@ -404,6 +498,7 @@ void worker_loop() {
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
         break;
       case LedPatternType::Solid:
+      case LedPatternType::Rainbow:
         set_solid(pattern);
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
         break;
@@ -423,6 +518,13 @@ void worker_loop() {
 }  // namespace
 
 void init_leds() {
+#ifdef OPENHD_HAVE_X21_LED
+  if (platform_info().platform_type == X_PLATFORM_TYPE_OPENHD_X21) {
+    if (init_x21_leds()) {
+      return;
+    }
+  }
+#endif
   g_layout = discover_leds();
   if (g_layout.leds.empty()) {
     return;
@@ -437,6 +539,12 @@ void init_leds() {
 }
 
 void update_leds_from_status(const StatusSnapshot& status) {
+#ifdef OPENHD_HAVE_X21_LED
+  if (g_x21_fd >= 0) {
+    apply_x21_pattern(select_pattern_from_status(status));
+    return;
+  }
+#endif
   if (g_layout.leds.empty()) {
     return;
   }
