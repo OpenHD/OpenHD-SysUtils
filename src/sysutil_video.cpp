@@ -336,7 +336,12 @@ void stop_video_process() {
     if (g_video_pid <= 0) {
         return;
     }
-    ::kill(g_video_pid, SIGTERM);
+    // start_video_process creates a new session, so the child PID is also the
+    // process-group ID. Stop the complete shell/GStreamer pipeline and avoid
+    // leaving a second UDP 5600 consumer behind after restarts.
+    if (::kill(-g_video_pid, SIGTERM) != 0) {
+        ::kill(g_video_pid, SIGTERM);
+    }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline) {
         int status = 0;
@@ -347,7 +352,9 @@ void stop_video_process() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    ::kill(g_video_pid, SIGKILL);
+    if (::kill(-g_video_pid, SIGKILL) != 0) {
+        ::kill(g_video_pid, SIGKILL);
+    }
     ::waitpid(g_video_pid, nullptr, 0);
     g_video_pid = -1;
 }
@@ -550,9 +557,12 @@ void start_ground_video_if_needed() {
                   << platform_info().platform_type << std::endl;
         return;
     }
-    if (!start_video_process()) {
-        std::cerr << "Failed to start ground video pipeline." << std::endl;
-    }
+    // QOpenHD owns the Raspberry Pi decoder lifecycle and requests it over
+    // sysutil.video.request. Starting another pipeline here races QOpenHD and
+    // creates two consumers on UDP port 5600.
+    std::cout << "Waiting for QOpenHD to request the Raspberry Pi video "
+                 "pipeline."
+              << std::endl;
 }
 
 void start_openhd_glide_early_if_needed() {

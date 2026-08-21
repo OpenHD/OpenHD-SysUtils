@@ -269,8 +269,9 @@ bool stop_artosyn_daemon() {
       attempted = run_cmd_quiet(cmd) || attempted;
     }
   }
-  static constexpr std::array<const char*, 5> daemon_patterns = {
-      "artosyn_daemon", "ar8030_daemon", "artlinkd", "bbd", "bb_daemon"};
+  static constexpr std::array<const char*, 6> daemon_patterns = {
+      "artosyn_daemon", "ar8030_daemon", "l4_daemon",
+      "artlinkd", "bbd", "bb_daemon"};
   for (const auto* pattern : daemon_patterns) {
     const std::string cmd =
         std::string("pkill -f ") + pattern + " >/dev/null 2>&1";
@@ -357,11 +358,13 @@ bool start_artosyn_daemon_via_service() {
 }
 
 bool start_artosyn_daemon_via_binary(int daemon_intf) {
-  static constexpr std::array<const char*, 10> daemon_candidates = {
+  static constexpr std::array<const char*, 12> daemon_candidates = {
       "/usr/local/bin/artosyn_daemon",
       "/usr/bin/artosyn_daemon",
       "/usr/local/bin/ar8030_daemon",
       "/usr/bin/ar8030_daemon",
+      "/usr/local/bin/l4_daemon",
+      "/usr/bin/l4_daemon",
       "/usr/local/bin/artlinkd",
       "/usr/bin/artlinkd",
       "/usr/local/bin/bbd",
@@ -375,7 +378,7 @@ bool start_artosyn_daemon_via_binary(int daemon_intf) {
     std::ostringstream cmd;
     cmd << daemon_path << " -i " << daemon_intf << " -p "
         << kArtosynDaemonPort
-        << " >/tmp/openhd_artosyn_daemon.log 2>&1 &";
+        << " >/dev/null 2>&1 &";
     if (run_cmd_quiet(cmd.str())) {
       log_wifi(std::string("Started Artosyn daemon binary ") + daemon_path +
                " (intf " + std::to_string(daemon_intf) + ", port " +
@@ -415,7 +418,7 @@ std::pair<bool, std::string> ensure_artosyn_tunnel_running(
     cmd << tunnel_path << " -p " << kArtosynTunnelPort << " -i " << local_ip
         << " -u 0 -d " << kArtosynTunnelIface << " -r " << kArtosynTunnelRxRate
         << " -t " << kArtosynTunnelTxRate
-        << " >/tmp/openhd_artosyn_tunnel.log 2>&1 &";
+        << " >/dev/null 2>&1 &";
     if (!run_cmd_quiet(cmd.str())) {
       continue;
     }
@@ -453,9 +456,11 @@ ArtosynRuntimeState ensure_artosyn_runtime_running(
     }
     last_attempt = now;
 
-    const bool prefer_binary_usb = has_artosyn_usb_hs_mode();
     bool started = false;
-    if (!prefer_binary_usb && start_artosyn_daemon_via_service()) {
+    // Prefer the packaged service on every transport. It gives the daemon one
+    // owner and lets systemd restart and reap it cleanly. Older images without
+    // the service retain the direct-binary fallback below.
+    if (start_artosyn_daemon_via_service()) {
       started = wait_for_artosyn_daemon_ready(
           kArtosynDaemonPort, std::chrono::milliseconds(2200));
       if (started) {
@@ -473,16 +478,6 @@ ArtosynRuntimeState ensure_artosyn_runtime_running(
           state.daemon_running = true;
           state.daemon_detail = "started-via-binary";
         }
-      }
-    }
-
-    if (!state.daemon_running && prefer_binary_usb &&
-        start_artosyn_daemon_via_service()) {
-      started = wait_for_artosyn_daemon_ready(
-          kArtosynDaemonPort, std::chrono::milliseconds(2200));
-      if (started) {
-        state.daemon_running = true;
-        state.daemon_detail = "started-via-service";
       }
     }
 
