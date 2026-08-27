@@ -28,6 +28,7 @@
 
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
+#include "sysutil_display.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_settings.h"
@@ -109,6 +110,9 @@ void run_firstboot_tasks() {
     }
   }
   if (apply_camera_config_if_needed()) {
+    needs_reboot = true;
+  }
+  if (apply_display_config_if_needed()) {
     needs_reboot = true;
   }
 

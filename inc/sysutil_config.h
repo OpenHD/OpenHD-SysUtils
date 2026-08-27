@@ -55,6 +55,13 @@ struct SysutilConfig {
   std::optional<int> ip_camera_bitrate_mbits;
   // Requested boot mode ("air" or "ground").
   std::optional<std::string> run_mode;
+  // Optional forced ground-station display mode. When disabled, EDID/automatic
+  // mode selection remains in use.
+  std::optional<bool> display_force_mode;
+  std::optional<int> display_width;
+  std::optional<int> display_height;
+  std::optional<int> display_refresh_hz;
+  std::optional<std::string> display_connector;
   // First-boot gate for one-time detection tasks.
   std::optional<bool> firstboot;
   // Detected init system (e.g. systemd or init.d).
@@ -79,6 +86,10 @@ struct SysutilConfig {
   std::optional<std::string> air_unit_ip;
   std::optional<int> video_port;
   std::optional<int> telemetry_port;
+  // FleetControl LTE/WireGuard uplink. The referenced wg-quick profile also
+  // carries non-secret OpenHD routing metadata in comments.
+  std::optional<bool> lte_enabled;
+  std::optional<std::string> lte_wireguard_config;
   // Microhard link configuration.
   std::optional<bool> disable_microhard_detection;
   std::optional<bool> force_microhard;

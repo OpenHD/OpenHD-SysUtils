@@ -1,0 +1,16 @@
+# OpenHD-Profile-Version=1
+# OpenHD-Device-ID=ohd-air-01
+# OpenHD-FleetControl-Address=10.77.10.1
+# OpenHD-Interface=openhd-lte
+# OpenHD-Video-Port=5600
+# OpenHD-Video2-Port=5610
+# OpenHD-Telemetry-Port=14550
+[Interface]
+PrivateKey = REPLACE_WITH_FLEETCONTROL_PROFILE
+Address = 10.77.10.2/32
+
+[Peer]
+PublicKey = REPLACE_WITH_FLEETCONTROL_PROFILE
+Endpoint = fleet.example.invalid:51820
+AllowedIPs = 10.77.10.0/24
+PersistentKeepalive = 25

@@ -35,7 +35,9 @@
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
 #include "sysutil_debug.h"
+#include "sysutil_display.h"
 #include "sysutil_hostname.h"
+#include "sysutil_lte.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
@@ -214,6 +216,26 @@ void sync_settings_from_files() {
         config.ip_camera_bitrate_mbits = *ip_camera_bitrate_mbits;
         changed = true;
       }
+      if (auto value = extract_bool_field(content, "display_force_mode"); value) {
+        config.display_force_mode = *value;
+        changed = true;
+      }
+      if (auto value = extract_int_field(content, "display_width"); value) {
+        config.display_width = *value;
+        changed = true;
+      }
+      if (auto value = extract_int_field(content, "display_height"); value) {
+        config.display_height = *value;
+        changed = true;
+      }
+      if (auto value = extract_int_field(content, "display_refresh_hz"); value) {
+        config.display_refresh_hz = *value;
+        changed = true;
+      }
+      if (auto value = extract_string_field(content, "display_connector"); value) {
+        config.display_connector = *value;
+        changed = true;
+      }
 
       // Parse role
       auto role = extract_string_field(content, "role");
@@ -371,6 +393,8 @@ std::string build_settings_response() {
   const int gen_rf_metrics_level = config.gen_rf_metrics_level.value_or(0);
   const bool disable_openhd_service =
       config.disable_openhd_service.value_or(false);
+  const bool display_force_mode = config.display_force_mode.value_or(false);
+  const auto lte = lte_profile_status();
 
   std::ostringstream out;
   out << "{\"type\":\"sysutil.settings.response\",\"ok\":true"
@@ -438,6 +462,15 @@ std::string build_settings_response() {
       << ",\"air_unit_ip\":\"" << json_escape(air_unit_ip) << "\""
       << ",\"video_port\":" << video_port
       << ",\"telemetry_port\":" << telemetry_port
+      << ",\"lte_configured\":" << (lte.configured ? "true" : "false")
+      << ",\"lte_active\":" << (lte.active ? "true" : "false")
+      << ",\"lte_device_id\":\"" << json_escape(lte.device_id) << "\""
+      << ",\"lte_fleetcontrol_address\":\""
+      << json_escape(lte.fleetcontrol_address) << "\""
+      << ",\"lte_interface\":\"" << json_escape(lte.interface_name) << "\""
+      << ",\"lte_video_port\":" << lte.video_port
+      << ",\"lte_video2_port\":" << lte.video2_port
+      << ",\"lte_telemetry_port\":" << lte.telemetry_port
       << ",\"disable_microhard_detection\":"
       << (disable_microhard_detection ? "true" : "false")
       << ",\"force_microhard\":" << (force_microhard ? "true" : "false")
@@ -452,7 +485,13 @@ std::string build_settings_response() {
       << (gen_enable_last_known_position ? "true" : "false")
       << ",\"gen_rf_metrics_level\":" << gen_rf_metrics_level
       << ",\"disable_openhd_service\":"
-      << (disable_openhd_service ? "true" : "false") << "}\n";
+      << (disable_openhd_service ? "true" : "false")
+      << ",\"display_force_mode\":" << (display_force_mode ? "true" : "false")
+      << ",\"display_width\":" << config.display_width.value_or(1920)
+      << ",\"display_height\":" << config.display_height.value_or(1080)
+      << ",\"display_refresh_hz\":" << config.display_refresh_hz.value_or(60)
+      << ",\"display_connector\":\""
+      << json_escape(config.display_connector.value_or("HDMI-A-1")) << "\"}\n";
   return out.str();
 }
 
@@ -495,6 +534,26 @@ std::string handle_settings_update(const std::string& line) {
           extract_string_field(line, "camera2_resolution_fps");
       camera2_resolution_fps.has_value()) {
     config.camera2_resolution_fps = *camera2_resolution_fps;
+    changed = true;
+  }
+  if (auto value = extract_bool_field(line, "display_force_mode"); value) {
+    config.display_force_mode = *value;
+    changed = true;
+  }
+  if (auto value = extract_int_field(line, "display_width"); value) {
+    config.display_width = *value;
+    changed = true;
+  }
+  if (auto value = extract_int_field(line, "display_height"); value) {
+    config.display_height = *value;
+    changed = true;
+  }
+  if (auto value = extract_int_field(line, "display_refresh_hz"); value) {
+    config.display_refresh_hz = *value;
+    changed = true;
+  }
+  if (auto value = extract_string_field(line, "display_connector"); value) {
+    config.display_connector = *value;
     changed = true;
   }
 
@@ -726,6 +785,9 @@ std::string handle_camera_setup_request(const std::string& line) {
                  "Unable to apply camera configuration.", 2);
       return;
     }
+    // Rockchip camera setup regenerates extlinux.conf. Reapply the managed
+    // display argument afterwards so a camera change cannot undo it.
+    (void)apply_display_config_if_needed();
     set_status("reboot", "Reboot initiated",
                "Rebooting after camera setup.");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));

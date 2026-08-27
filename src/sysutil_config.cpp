@@ -102,6 +102,11 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.ip_camera_bitrate_mbits =
       extract_int_field(content, "ip_camera_bitrate_mbits");
   config.run_mode = extract_string_field(content, "run_mode");
+  config.display_force_mode = extract_bool_field(content, "display_force_mode");
+  config.display_width = extract_int_field(content, "display_width");
+  config.display_height = extract_int_field(content, "display_height");
+  config.display_refresh_hz = extract_int_field(content, "display_refresh_hz");
+  config.display_connector = extract_string_field(content, "display_connector");
   config.firstboot = extract_bool_field(content, "firstboot");
   config.init_system = extract_string_field(content, "init_system");
   config.shell = extract_string_field(content, "shell");
@@ -129,6 +134,9 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   config.air_unit_ip = extract_string_field(content, "air_unit_ip");
   config.video_port = extract_int_field(content, "video_port");
   config.telemetry_port = extract_int_field(content, "telemetry_port");
+  config.lte_enabled = extract_bool_field(content, "lte_enabled");
+  config.lte_wireguard_config =
+      extract_string_field(content, "lte_wireguard_config");
   config.disable_microhard_detection =
       extract_bool_field(content, "disable_microhard_detection");
   config.force_microhard = extract_bool_field(content, "force_microhard");
@@ -224,6 +232,11 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_string("camera2_ip_camera_pipeline", config.camera2_ip_camera_pipeline);
   write_int("ip_camera_bitrate_mbits", config.ip_camera_bitrate_mbits);
   write_string("run_mode", config.run_mode);
+  write_bool("display_force_mode", config.display_force_mode);
+  write_int("display_width", config.display_width);
+  write_int("display_height", config.display_height);
+  write_int("display_refresh_hz", config.display_refresh_hz);
+  write_string("display_connector", config.display_connector);
   write_bool("firstboot", config.firstboot);
   write_string("init_system", config.init_system);
   write_string("shell", config.shell);
@@ -244,6 +257,8 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_string("air_unit_ip", config.air_unit_ip);
   write_int("video_port", config.video_port);
   write_int("telemetry_port", config.telemetry_port);
+  write_bool("lte_enabled", config.lte_enabled);
+  write_string("lte_wireguard_config", config.lte_wireguard_config);
   write_bool("disable_microhard_detection", config.disable_microhard_detection);
   write_bool("force_microhard", config.force_microhard);
   write_string("microhard_username", config.microhard_username);

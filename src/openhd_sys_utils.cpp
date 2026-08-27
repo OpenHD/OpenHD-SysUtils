@@ -21,8 +21,10 @@
 #include "sysutil_config.h"
 #include "sysutil_firstboot.h"
 #include "sysutil_debug.h"
+#include "sysutil_display.h"
 #include "sysutil_hostname.h"
 #include "sysutil_led.h"
+#include "sysutil_lte.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
@@ -260,6 +262,18 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
                         std::cout << "sysutils => " << response;
                     }
                     (void)sendAll(fd, response);
+                } else if (sysutil::is_display_request(line)) {
+                    const auto response = sysutil::build_display_response();
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
+                } else if (sysutil::is_display_update_request(line)) {
+                    const auto response = sysutil::handle_display_update(line);
+                    if (gDebug) {
+                        std::cout << "sysutils => " << response;
+                    }
+                    (void)sendAll(fd, response);
                 } else if (sysutil::is_debug_update(line)) {
                     const auto response = sysutil::handle_debug_update(line);
                     if (gDebug) {
@@ -416,6 +430,10 @@ int main(int argc, char* argv[]) {
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     sysutil::sync_settings_from_files();
+    const auto lte = sysutil::initialize_lte_link();
+    if (lte.configured && !lte.active) {
+        std::cerr << "[sysutils][lte] WireGuard profile is valid but activation failed." << std::endl;
+    }
     sysutil::init_update_worker();
     sysutil::init_wifi_info();
     sysutil::link_serial_ports();

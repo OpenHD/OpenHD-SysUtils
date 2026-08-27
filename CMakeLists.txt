@@ -60,11 +60,13 @@ add_custom_target(generate_platforms DEPENDS ${GENERATED_PLATFORMS_HEADER})
 add_executable(openhd_sys_utils
     src/openhd_sys_utils.cpp
     src/sysutil_debug.cpp
+    src/sysutil_display.cpp
     src/sysutil_firstboot.cpp
     src/sysutil_config.cpp
     src/sysutil_camera.cpp
     src/sysutil_hostname.cpp
     src/sysutil_led.cpp
+    src/sysutil_lte.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
     src/sysutil_serial.cpp
@@ -169,7 +171,7 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenHD Team")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base, dosfstools, util-linux, parted")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base, dosfstools, util-linux, parted, wireguard-tools")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"
