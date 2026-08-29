@@ -423,6 +423,7 @@ void start_qopenhd_if_needed() {
     if (!run_cmd("systemctl start qopenhd.service")) {
         std::cerr << "Failed to start qopenhd.service" << std::endl;
     }
+    run_cmd("systemctl stop getty@tty1.service");
 }
 
 } // namespace
