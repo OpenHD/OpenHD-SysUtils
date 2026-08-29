@@ -134,8 +134,8 @@ install(
 )
 
 install(
-    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/init.d/openhd-sys-utils
-    DESTINATION /etc/init.d
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/misc/wifi_cards.json
+    DESTINATION /usr/local/share/OpenHD/SysUtils
 )
 
 if(OPENHD_X20_PACKAGE)
@@ -171,7 +171,7 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenHD Team")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, lsb-base, dosfstools, util-linux, parted, wireguard-tools")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, dosfstools, util-linux, parted, wireguard-tools")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"

@@ -59,6 +59,7 @@ constexpr const char* kUpdateInfoResponseType = "sysutil.update.info.response";
 
 std::atomic<bool> g_update_requested{false};
 std::atomic<bool> g_updating{false};
+std::atomic<bool> g_update_stop{false};
 std::mutex g_update_mutex;
 std::condition_variable g_update_cv;
 std::thread g_update_thread;
@@ -922,9 +923,14 @@ void run_update() {
 }
 
 void update_worker() {
-  while (true) {
+  while (!g_update_stop.load()) {
     std::unique_lock<std::mutex> lock(g_update_mutex);
-    g_update_cv.wait_for(lock, std::chrono::seconds(kUpdatePollSeconds));
+    g_update_cv.wait_for(lock, std::chrono::seconds(kUpdatePollSeconds), [] {
+      return g_update_stop.load() || g_update_requested.load();
+    });
+    if (g_update_stop.load()) {
+      break;
+    }
     if (g_updating) {
       continue;
     }
@@ -951,8 +957,16 @@ void init_update_worker() {
   if (g_update_thread.joinable()) {
     return;
   }
+  g_update_stop = false;
   g_update_thread = std::thread(update_worker);
-  g_update_thread.detach();
+}
+
+void shutdown_update_worker() {
+  g_update_stop = true;
+  g_update_cv.notify_all();
+  if (g_update_thread.joinable()) {
+    g_update_thread.join();
+  }
 }
 
 bool is_update_request(const std::string& line) {

@@ -2,8 +2,9 @@
 
 set -e
 
-if [ "$1" = "purge" ] && command -v update-rc.d >/dev/null 2>&1; then
-    update-rc.d openhd-sys-utils remove
+if [ "$1" = "purge" ] && [ -d /run/systemd/system ]; then
+    systemctl disable openhd-sys-utils.service >/dev/null 2>&1 || true
+    systemctl daemon-reload || true
 fi
 
 exit 0

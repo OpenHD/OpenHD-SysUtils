@@ -608,10 +608,11 @@ void start_openhd_services_if_needed() {
         return;
     }
 
-    const bool openhd_started = start_unit("openhd.service");
-    if (!openhd_started) {
-        std::cerr << "Failed to start openhd.service" << std::endl;
-    }
+    // openhd.service is ordered after openhd-sys-utils.service and is owned by
+    // systemd. Starting it synchronously from sysutils deadlocks startup:
+    // OpenHD waits for the sysutils socket while this process is still blocked
+    // in `systemctl start openhd.service` and has not entered its socket loop.
+    // Merely report its state here; systemd starts it after this unit.
 
     if (ground && !should_use_openhd_glide()) {
         start_qopenhd_if_needed();

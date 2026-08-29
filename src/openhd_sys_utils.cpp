@@ -455,11 +455,13 @@ int main(int argc, char* argv[]) {
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {
+        sysutil::shutdown_update_worker();
         return 1;
     }
 
     SocketGuard socketGuard(kSocketPath);
     if (!installSignalHandlers()) {
+        sysutil::shutdown_update_worker();
         return 1;
     }
 
@@ -529,5 +531,6 @@ int main(int argc, char* argv[]) {
     ::close(serverFd);
     socketGuard.disarm();
     ::unlink(std::string(kSocketPath).c_str());
+    sysutil::shutdown_update_worker();
     return exitCode;
 }

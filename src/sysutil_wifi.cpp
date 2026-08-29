@@ -1299,6 +1299,9 @@ bool is_openhd_wifibroadcast_type(const std::string& type_name) {
   if (type_upper.rfind("OPENHD_", 0) == 0) {
     return true;
   }
+  if (type_upper.rfind("DEVOURER_", 0) == 0) {
+    return true;
+  }
   if (type_upper == "ARTOSYN" || type_upper == "AR8030" ||
       type_upper == "ARTLINK") {
     return true;
@@ -1702,6 +1705,120 @@ std::vector<WifiCardInfo> detect_wifi_cards(
   return cards;
 }
 
+std::string devourer_type_for_usb_id(const std::string& vendor,
+                                     const std::string& product) {
+  if (!equal_after_uppercase(vendor, "0x0BDA")) {
+    return "";
+  }
+  if (equal_after_uppercase(product, "0x8812")) {
+    return "DEVOURER_RTL8812A";
+  }
+  if (equal_after_uppercase(product, "0xB812")) {
+    return "DEVOURER_RTL8822B";
+  }
+  if (equal_after_uppercase(product, "0xC811") ||
+      equal_after_uppercase(product, "0xC812") ||
+      equal_after_uppercase(product, "0xC82C") ||
+      equal_after_uppercase(product, "0xC82E")) {
+    return "DEVOURER_RTL8822C";
+  }
+  if (equal_after_uppercase(product, "0xA81A") ||
+      equal_after_uppercase(product, "0xE822") ||
+      equal_after_uppercase(product, "0xA82A")) {
+    return "DEVOURER_RTL8822E";
+  }
+  return "";
+}
+
+bool usb_device_has_netdev(const std::filesystem::path& usb_device) {
+  std::error_code ec;
+  const auto usb_canonical = std::filesystem::canonical(usb_device, ec);
+  if (ec) return false;
+  std::filesystem::directory_iterator net_dir("/sys/class/net", ec);
+  if (ec) return false;
+  for (const auto& entry : net_dir) {
+    const auto net_device = std::filesystem::canonical(entry.path() / "device", ec);
+    if (ec) {
+      ec.clear();
+      continue;
+    }
+    for (auto current = net_device; !current.empty();) {
+      if (current == usb_canonical) return true;
+      const auto parent = current.parent_path();
+      if (parent == current) break;
+      current = parent;
+    }
+  }
+  return false;
+}
+
+std::vector<WifiCardInfo> detect_devourer_usb_cards(
+    const std::unordered_map<std::string, std::string>& overrides,
+    const std::unordered_map<std::string, WifiTxPowerOverride>& tx_overrides,
+    const std::vector<WifiCardProfile>& profiles) {
+  std::vector<WifiCardInfo> cards;
+  std::error_code ec;
+  const std::filesystem::path usb_root("/sys/bus/usb/devices");
+  std::filesystem::directory_iterator usb_dir(usb_root, ec);
+  if (ec) return cards;
+  for (const auto& entry : usb_dir) {
+    const auto vendor_path = entry.path() / "idVendor";
+    const auto product_path = entry.path() / "idProduct";
+    if (!file_exists(vendor_path.string()) ||
+        !file_exists(product_path.string())) {
+      continue;
+    }
+    const auto vendor = normalize_id(read_file(vendor_path.string()).value_or(""));
+    const auto product = normalize_id(read_file(product_path.string()).value_or(""));
+    const auto type = devourer_type_for_usb_id(vendor, product);
+    if (type.empty() || usb_device_has_netdev(entry.path())) {
+      continue;
+    }
+
+    WifiCardInfo card{};
+    card.interface_name = "devourer-usb-" + entry.path().filename().string();
+    card.driver_name = "devourer";
+    card.vendor_id = vendor;
+    card.device_id = product;
+    card.detected_type = type;
+    card.effective_type = type;
+
+    const auto override_it = overrides.find(card.interface_name);
+    if (override_it != overrides.end()) {
+      card.override_type = override_it->second;
+      if (equal_after_uppercase(card.override_type, "DISABLED")) {
+        card.disabled = true;
+      } else {
+        card.effective_type = card.override_type;
+      }
+    }
+
+    const auto* profile = find_wifi_profile(
+        profiles, card.vendor_id, card.device_id, card.detected_type);
+    if (profile) {
+      card.card_name = profile->name;
+      card.power_mode = profile->power_mode;
+      card.power_lowest = to_string_if(profile->lowest_mw);
+      card.power_low = to_string_if(profile->low_mw);
+      card.power_mid = to_string_if(profile->mid_mw);
+      card.power_high = to_string_if(profile->high_mw);
+      card.power_min = to_string_if(profile->min_mw);
+      card.power_max = to_string_if(profile->max_mw);
+    }
+    const auto tx_it = tx_overrides.find(card.interface_name);
+    if (tx_it != tx_overrides.end()) {
+      card.tx_power = tx_it->second.tx_power;
+      card.tx_power_high = tx_it->second.tx_power_high;
+      card.tx_power_low = tx_it->second.tx_power_low;
+      card.power_level = to_upper(tx_it->second.power_level);
+      if (!tx_it->second.card_name.empty()) card.card_name = tx_it->second.card_name;
+    }
+    log_wifi("Detected userspace radio: " + card_short_description(card));
+    cards.push_back(std::move(card));
+  }
+  return cards;
+}
+
 std::vector<WifiCardInfo> detect_artosyn_cards() {
   std::vector<WifiCardInfo> cards;
 
@@ -1793,6 +1910,10 @@ void refresh_wifi_info_impl() {
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();
   g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
+  auto devourer_cards =
+      detect_devourer_usb_cards(overrides, tx_overrides, profiles);
+  g_wifi_cards.insert(g_wifi_cards.end(), devourer_cards.begin(),
+                      devourer_cards.end());
   auto artosyn_cards = detect_artosyn_cards();
   if (!artosyn_cards.empty()) {
     log_wifi("Detected " + std::to_string(artosyn_cards.size()) +

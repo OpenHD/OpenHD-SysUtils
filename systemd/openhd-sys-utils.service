@@ -23,17 +23,22 @@
 
 [Unit]
 Description=OpenHD system utilities orchestrator
-DefaultDependencies=no
 After=local-fs.target
 Wants=local-fs.target
-Before=sysinit.target basic.target openhd.service openhd_rpi.service openhd_mod.service openhd-x20.service
+Before=openhd.service openhd_rpi.service openhd_mod.service openhd-x20.service
 
 [Service]
 Type=simple
 User=root
 ExecStart=/usr/local/bin/openhd_sys_utils
+# Keep units ordered After= this service from running until the control socket
+# is actually usable. Type=simple alone becomes active immediately after fork.
+ExecStartPost=/bin/sh -c 'i=0; while [ "$i" -lt 300 ]; do [ -S /run/openhd/openhd_sys.sock ] && exit 0; i=$((i + 1)); sleep 0.1; done; exit 1'
+TimeoutStartSec=35
+TimeoutStopSec=5
+KillMode=mixed
 Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target

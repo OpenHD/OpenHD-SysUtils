@@ -31,6 +31,9 @@ namespace sysutil {
 // Starts the background update worker.
 void init_update_worker();
 
+// Stops and joins the background update worker.
+void shutdown_update_worker();
+
 // Checks whether a message requests an update run.
 bool is_update_request(const std::string& line);
 

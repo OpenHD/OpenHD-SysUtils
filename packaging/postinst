@@ -17,18 +17,15 @@ case "$1" in
             touch /usr/local/share/openhd_platform/wifi_card_type/88xxau/custom
         fi
 
-        # X20 images use SysV init. Registering the script also works safely on
-        # systemd hosts, where the native unit with the same name takes priority.
-        if [ -x /etc/init.d/openhd-sys-utils ]; then
-            if command -v update-rc.d >/dev/null 2>&1; then
-                update-rc.d openhd-sys-utils defaults
-            fi
-
-            if command -v invoke-rc.d >/dev/null 2>&1; then
-                invoke-rc.d openhd-sys-utils start || true
-            elif [ ! -d /run/systemd/system ]; then
-                /etc/init.d/openhd-sys-utils start || true
-            fi
+        if [ -d /run/systemd/system ]; then
+            # Retire the pre-C++ launcher. Old images can leave this enabled,
+            # but the shell script it points at no longer ships.
+            systemctl disable --now openhd_sys_utils.service >/dev/null 2>&1 || true
+            rm -f /etc/systemd/system/openhd_sys_utils.service
+            rm -f /etc/init.d/openhd-sys-utils
+            systemctl daemon-reload || true
+            systemctl enable openhd-sys-utils.service >/dev/null 2>&1 || true
+            systemctl restart openhd-sys-utils.service >/dev/null 2>&1 || true
         fi
         ;;
 esac
