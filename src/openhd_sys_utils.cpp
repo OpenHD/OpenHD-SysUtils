@@ -434,6 +434,9 @@ int main(int argc, char* argv[]) {
     if (lte.configured && !lte.active) {
         std::cerr << "[sysutils][lte] WireGuard profile is valid but activation failed." << std::endl;
     }
+    if (lte.active && !sysutil::sync_fleetcontrol_video_certificate()) {
+        std::cerr << "[sysutils][lte] Video certificate is not available yet." << std::endl;
+    }
     sysutil::init_update_worker();
     sysutil::init_wifi_info();
     sysutil::link_serial_ports();
@@ -452,6 +455,8 @@ int main(int argc, char* argv[]) {
     }
     auto next_wifi_retry = std::chrono::steady_clock::now() +
                            std::chrono::seconds(5);
+    auto next_certificate_sync = std::chrono::steady_clock::now() +
+                                 std::chrono::hours(6);
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {
@@ -470,6 +475,11 @@ int main(int argc, char* argv[]) {
     int exitCode = 0;
 
     while (!gStopRequested) {
+        if (std::chrono::steady_clock::now() >= next_certificate_sync) {
+            (void)sysutil::sync_fleetcontrol_video_certificate();
+            next_certificate_sync = std::chrono::steady_clock::now() +
+                                    std::chrono::hours(6);
+        }
         pollFds.clear();
         pollFds.push_back({serverFd, POLLIN, 0});
         for (const auto& entry : clientBuffers) {

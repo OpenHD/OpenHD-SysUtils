@@ -23,6 +23,9 @@ LteProfile load_lte_profile(const std::string& path);
 // Activates the configured wg-quick profile once at SysUtils startup.
 LteProfile initialize_lte_link();
 
+// Fetches the signed craft certificate over the authenticated WireGuard link.
+bool sync_fleetcontrol_video_certificate();
+
 // Returns the last known LTE profile/status for the settings socket.
 LteProfile lte_profile_status();
 

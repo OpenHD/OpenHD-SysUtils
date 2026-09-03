@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <vector>
 #include <cerrno>
@@ -16,6 +18,12 @@
 namespace sysutil {
 namespace {
 constexpr const char* kDefaultProfile = "/etc/wireguard/openhd-lte.conf";
+constexpr const char* kVideoCertificate =
+    "/config/openhd/premium_certificate.ohdcert";
+constexpr const char* kDeviceIdFile =
+    "/config/openhd/fleetcontrol_device_id";
+constexpr const char* kTrustedTimeAnchor =
+    "/config/openhd/trusted_time_anchor";
 std::mutex g_mutex;
 LteProfile g_status;
 
@@ -122,5 +130,94 @@ LteProfile initialize_lte_link() {
 LteProfile lte_profile_status() {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_status;
+}
+
+bool sync_fleetcontrol_video_certificate() {
+  LteProfile status;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    status = g_status;
+  }
+  if (!status.configured || !status.active || !valid_id(status.device_id) ||
+      !valid_host(status.fleetcontrol_address)) {
+    return false;
+  }
+  std::filesystem::create_directories("/config/openhd");
+  const std::string temporary =
+      std::string(kVideoCertificate) + ".download";
+  const std::string header_temporary = temporary + ".headers";
+  const std::string url = "http://" + status.fleetcontrol_address +
+                          ":3000/api/device/video-certificate";
+  if (run("curl", {"--fail", "--silent", "--show-error", "--max-time",
+                   "12", "--dump-header", header_temporary, "--output",
+                   temporary, url}) != 0) {
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(header_temporary, ignored);
+    return false;
+  }
+  std::ifstream input(temporary, std::ios::binary);
+  const std::string certificate((std::istreambuf_iterator<char>(input)),
+                                std::istreambuf_iterator<char>());
+  const bool valid_size = !certificate.empty() && certificate.size() <= 8192;
+  const bool bound = certificate.find("device_id=" + status.device_id + "\n") !=
+                     std::string::npos;
+  const bool signed_certificate =
+      certificate.find("signature_b64=") != std::string::npos;
+  if (!valid_size || !bound || !signed_certificate) {
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(header_temporary, ignored);
+    return false;
+  }
+  std::error_code ec;
+  std::filesystem::permissions(
+      temporary, std::filesystem::perms::owner_read |
+                     std::filesystem::perms::owner_write,
+      std::filesystem::perm_options::replace, ec);
+  if (ec) return false;
+  std::filesystem::rename(temporary, kVideoCertificate, ec);
+  if (ec) return false;
+
+  uint64_t server_time = 0;
+  {
+    std::ifstream headers(header_temporary);
+    std::string line;
+    while (std::getline(headers, line)) {
+      std::string lower = line;
+      std::transform(lower.begin(), lower.end(), lower.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      constexpr const char* prefix = "x-openhd-server-time:";
+      if (lower.rfind(prefix, 0) == 0) {
+        try {
+          server_time = std::stoull(trim(line.substr(std::strlen(prefix))));
+        } catch (...) {
+          server_time = 0;
+        }
+      }
+    }
+  }
+  std::filesystem::remove(header_temporary, ec);
+  if (server_time >= 1704067200ULL && server_time <= 2114380800ULL) {
+    uint64_t existing = 0;
+    std::ifstream anchor_input(kTrustedTimeAnchor);
+    anchor_input >> existing;
+    if (server_time > existing) {
+      const std::string anchor_temp = std::string(kTrustedTimeAnchor) + ".tmp";
+      {
+        std::ofstream anchor(anchor_temp, std::ios::trunc);
+        anchor << server_time << '\n';
+      }
+      std::filesystem::rename(anchor_temp, kTrustedTimeAnchor, ec);
+      if (ec) return false;
+    }
+  }
+  const std::string device_temp = std::string(kDeviceIdFile) + ".tmp";
+  {
+    std::ofstream device(device_temp, std::ios::trunc);
+    device << status.device_id << '\n';
+  }
+  std::filesystem::rename(device_temp, kDeviceIdFile, ec);
+  return !ec;
 }
 }  // namespace sysutil
