@@ -55,8 +55,8 @@ jobs:
           set -euo pipefail
           chmod 1777 /tmp || true
           # For Bullseye, allow installation from archived/old packages that may no longer be in security repo
-          apt-get -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true update --fix-missing
-          apt-get install -y --fix-missing cmake g++ python3
+          apt-get -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true -o Apt::Default-Release=bullseye update --fix-missing
+          apt-get install -y --fix-missing -t bullseye cmake g++ python3 || apt-get install -y --fix-missing cmake g++ python3          apt-get install -y --fix-missing cmake g++ python3
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
           cd build
