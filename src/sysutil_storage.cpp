@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <regex>
@@ -37,6 +38,7 @@ namespace {
 
 constexpr const char* kVideoMountPoint = "/Video";
 constexpr const char* kRecordingsLabel = "RECORDINGS";
+constexpr std::uint64_t kMigrationReserveBytes = 64ULL * 1024ULL * 1024ULL;
 constexpr const char* kRecordingUuidPath =
     "/usr/local/share/OpenHD/SysUtils/recording_uuid";
 std::vector<StorageEntry> g_last_inventory;
@@ -423,6 +425,181 @@ bool mount_for_recording(const StorageEntry& entry, std::string& message) {
   return true;
 }
 
+bool migrate_recordings(const StorageEntry& entry, std::string& message) {
+  if (entry.kind != "partition" || entry.filesystem.empty() ||
+      !entry.can_mount || entry.mounted_at_video) {
+    message = "Select a different mountable partition for migration.";
+    return false;
+  }
+
+  const std::filesystem::path source(kVideoMountPoint);
+  std::error_code ec;
+  if (!std::filesystem::is_directory(source, ec) || ec) {
+    message = "The current /Video recording folder is unavailable.";
+    return false;
+  }
+
+  std::vector<std::filesystem::path> source_files;
+  std::uint64_t required_bytes = 0;
+  for (std::filesystem::recursive_directory_iterator it(
+           source, std::filesystem::directory_options::skip_permission_denied,
+           ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    const auto& path = it->path();
+    if (it.depth() == 0 && path.filename() == "external_video_part.txt") {
+      continue;
+    }
+    if (it->is_regular_file(ec) && !ec) {
+      const auto size = it->file_size(ec);
+      if (ec || required_bytes >
+                    std::numeric_limits<std::uint64_t>::max() - size) {
+        message = "Could not calculate the size of existing recordings.";
+        return false;
+      }
+      required_bytes += size;
+      source_files.push_back(path);
+    }
+  }
+  if (ec) {
+    message = "Could not scan the current recording folder.";
+    return false;
+  }
+  if (source_files.empty()) {
+    const bool mounted = mount_for_recording(entry, message);
+    if (mounted) {
+      message = "No recordings needed moving; the destination is now active.";
+    }
+    return mounted;
+  }
+
+  if (!unmount_if_mounted(entry)) {
+    message = "Selected partition is busy and could not be unmounted.";
+    return false;
+  }
+  const auto temporary_mount =
+      std::filesystem::path("/run/openhd/storage-migrate") /
+      std::to_string(static_cast<int>(entry.id));
+  std::filesystem::create_directories(temporary_mount, ec);
+  if (ec || !mount_partition(entry.device, temporary_mount.string(), false)) {
+    message = "Could not mount the destination for migration.";
+    return false;
+  }
+  const auto cleanup_mount = [&temporary_mount]() {
+    (void)run_process({"umount", temporary_mount.string()});
+    std::error_code cleanup_ec;
+    std::filesystem::remove(temporary_mount, cleanup_ec);
+  };
+
+  const auto free_bytes = filesystem_free_bytes(temporary_mount.string());
+  if (free_bytes < required_bytes ||
+      free_bytes - required_bytes < kMigrationReserveBytes) {
+    cleanup_mount();
+    message = "Destination does not have enough free space for migration.";
+    return false;
+  }
+
+  const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+  const auto staging =
+      temporary_mount / (".openhd-import-" + std::to_string(timestamp));
+  const auto completed =
+      temporary_mount / ("Imported-OpenHD-" + std::to_string(timestamp));
+  std::filesystem::create_directories(staging, ec);
+  if (ec) {
+    cleanup_mount();
+    message = "Could not create a migration folder on the destination.";
+    return false;
+  }
+
+  set_status("storage.migrating", "Moving Air recordings",
+             "Copying and verifying recordings before removing source files.");
+  for (const auto& source_file : source_files) {
+    const auto relative = std::filesystem::relative(source_file, source, ec);
+    if (ec || relative.empty() || relative.string().rfind("..", 0) == 0) {
+      std::filesystem::remove_all(staging, ec);
+      cleanup_mount();
+      message = "Unsafe source path encountered; migration was cancelled.";
+      return false;
+    }
+    const auto destination_file = staging / relative;
+    std::filesystem::create_directories(destination_file.parent_path(), ec);
+    if (ec || !std::filesystem::copy_file(
+                  source_file, destination_file,
+                  std::filesystem::copy_options::none, ec) ||
+        ec || std::filesystem::file_size(source_file, ec) !=
+                  std::filesystem::file_size(destination_file, ec) ||
+        ec) {
+      std::filesystem::remove_all(staging, ec);
+      cleanup_mount();
+      message = "Copy or verification failed; source recordings were kept.";
+      return false;
+    }
+  }
+  ::sync();
+  std::filesystem::rename(staging, completed, ec);
+  if (ec) {
+    std::filesystem::remove_all(staging, ec);
+    cleanup_mount();
+    message = "Could not finalize the copied recordings; source files were kept.";
+    return false;
+  }
+
+  // Remove only regular files that were individually copied and verified.
+  for (const auto& source_file : source_files) {
+    std::filesystem::remove(source_file, ec);
+    if (ec) {
+      cleanup_mount();
+      message = "Recordings were copied, but some source files could not be removed.";
+      return false;
+    }
+  }
+  std::vector<std::filesystem::path> source_directories;
+  for (std::filesystem::recursive_directory_iterator it(
+           source, std::filesystem::directory_options::skip_permission_denied,
+           ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    if (it->is_directory(ec) && !ec) {
+      source_directories.push_back(it->path());
+    }
+  }
+  std::sort(source_directories.rbegin(), source_directories.rend());
+  for (const auto& directory : source_directories) {
+    std::filesystem::remove(directory, ec);
+    ec.clear();
+  }
+  ::sync();
+
+  std::optional<StorageEntry> previous_video;
+  for (const auto& candidate : list_safe_storage()) {
+    if (candidate.mounted_at_video) {
+      previous_video = candidate;
+      break;
+    }
+  }
+  if (previous_video && !unmount_if_mounted(*previous_video)) {
+    cleanup_mount();
+    message = "Recordings were copied, but the previous destination is busy.";
+    return false;
+  }
+  cleanup_mount();
+  if (!mount_partition(entry.device, kVideoMountPoint, false)) {
+    if (previous_video) {
+      (void)mount_partition(previous_video->device, kVideoMountPoint, false);
+    }
+    message = "Recordings were copied, but activating the destination failed.";
+    return false;
+  }
+  std::ofstream marker("/Video/external_video_part.txt");
+  const bool persisted = persist_recording_device(entry.device);
+  message = persisted
+                ? "Recordings moved and the destination is now active."
+                : "Recordings moved; destination selection lasts until reboot.";
+  return true;
+}
+
 std::string first_partition_path(const std::string& disk) {
   return disk.empty() || !std::isdigit(static_cast<unsigned char>(disk.back()))
              ? disk + "1"
@@ -595,6 +772,8 @@ std::string handle_storage_action_request(const std::string& line) {
     ok = repartition_disk(*entry, message);
   } else if (action == "mount") {
     ok = mount_for_recording(*entry, message);
+  } else if (action == "migrate") {
+    ok = migrate_recordings(*entry, message);
   } else {
     message = "Unsupported storage action.";
   }

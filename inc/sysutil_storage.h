@@ -35,7 +35,7 @@ std::vector<StorageEntry> list_safe_storage();
 bool is_storage_list_request(const std::string& line);
 std::string build_storage_list_response();
 
-// action is one of: format, repartition, mount.
+// action is one of: format, repartition, mount, migrate.
 bool is_storage_action_request(const std::string& line);
 std::string handle_storage_action_request(const std::string& line);
 
