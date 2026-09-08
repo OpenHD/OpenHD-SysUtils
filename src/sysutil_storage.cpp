@@ -51,6 +51,7 @@ struct BlockRow {
   std::string label;
   std::string mountpoint;
   std::uint64_t size_bytes = 0;
+  std::uint64_t start_bytes = 0;
   bool read_only = false;
 };
 
@@ -172,6 +173,22 @@ std::uint64_t parse_u64(const std::string& value) {
   }
 }
 
+std::uint64_t partition_start_bytes(const std::string& device) {
+  const auto name = std::filesystem::path(device).filename().string();
+  if (name.empty()) {
+    return 0;
+  }
+  std::ifstream input(std::filesystem::path("/sys/class/block") / name /
+                      "start");
+  std::uint64_t sectors = 0;
+  if (!(input >> sectors) ||
+      sectors > std::numeric_limits<std::uint64_t>::max() / 512ULL) {
+    return 0;
+  }
+  // Linux exposes partition offsets in fixed 512-byte sectors in sysfs.
+  return sectors * 512ULL;
+}
+
 std::vector<BlockRow> read_block_rows() {
   const auto output = capture_process(
       {"lsblk", "-b", "-P", "-p", "-o",
@@ -202,6 +219,7 @@ std::vector<BlockRow> read_block_rows() {
       row.parent_device = "/dev/" + row.parent_device;
     }
     row.size_bytes = parse_u64(fields["SIZE"]);
+    row.start_bytes = partition_start_bytes(row.device);
     row.filesystem = fields["FSTYPE"];
     row.label = fields["LABEL"];
     row.mountpoint = fields["MOUNTPOINT"];
@@ -285,7 +303,7 @@ std::uint64_t probe_free_bytes(const BlockRow& row) {
 }
 
 std::optional<StorageEntry> find_current_entry(const StorageEntry& snapshot) {
-  for (const auto& current : list_safe_storage()) {
+  for (const auto& current : list_storage_inventory()) {
     if (canonical_device(current.device) == canonical_device(snapshot.device) &&
         current.kind == snapshot.kind) {
       StorageEntry result = current;
@@ -643,9 +661,71 @@ bool repartition_disk(const StorageEntry& entry, std::string& message) {
   return true;
 }
 
+bool create_recording_partition(const StorageEntry& entry,
+                                std::string& message) {
+  constexpr std::uint64_t kMinimumBytes = 1024ULL * 1024ULL * 1024ULL;
+  constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
+  if (entry.kind != "disk" || !entry.can_create_partition ||
+      entry.unallocated_bytes < kMinimumBytes) {
+    message = "There is not enough contiguous unallocated space.";
+    return false;
+  }
+
+  std::set<std::string> existing_partitions;
+  for (const auto& row : read_block_rows()) {
+    if (row.kind == "partition" &&
+        canonical_device(row.parent_device) == canonical_device(entry.device)) {
+      existing_partitions.insert(canonical_device(row.device));
+    }
+  }
+
+  const auto occupied_bytes = entry.size_bytes - entry.unallocated_bytes;
+  const auto start_mib = std::max<std::uint64_t>(
+      1, (occupied_bytes + kMiB - 1) / kMiB);
+  set_status("storage.partition.creating", "Adding recording space",
+             "Creating and preparing the recording partition.");
+  if (!run_process({"parted", "--script", entry.device, "mkpart", "primary",
+                    "fat32", std::to_string(start_mib) + "MiB", "100%"}) ||
+      !run_process({"partprobe", entry.device})) {
+    message = "Creating the recording partition failed.";
+    return false;
+  }
+
+  std::optional<BlockRow> created;
+  for (int attempt = 0; attempt < 20 && !created; ++attempt) {
+    for (const auto& row : read_block_rows()) {
+      if (row.kind == "partition" &&
+          canonical_device(row.parent_device) == canonical_device(entry.device) &&
+          existing_partitions.count(canonical_device(row.device)) == 0) {
+        created = row;
+        break;
+      }
+    }
+    if (!created) std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  if (!created) {
+    message = "The partition was created, but its device did not appear.";
+    return false;
+  }
+
+  StorageEntry partition;
+  partition.id = entry.id;
+  partition.device = created->device;
+  partition.kind = "partition";
+  partition.parent_device = entry.device;
+  partition.size_bytes = created->size_bytes;
+  partition.can_format = true;
+  partition.can_mount = true;
+  if (!format_partition(partition, message)) return false;
+  partition.filesystem = "vfat";
+  if (!mount_for_recording(partition, message)) return false;
+  message = "Recording partition created and selected.";
+  return true;
+}
+
 }  // namespace
 
-std::vector<StorageEntry> list_safe_storage() {
+std::vector<StorageEntry> list_storage_inventory() {
   const auto rows = read_block_rows();
   const auto roots = root_devices(rows);
   std::set<std::string> excluded_disks;
@@ -654,8 +734,8 @@ std::vector<StorageEntry> list_safe_storage() {
       excluded_disks.insert(canonical_device(row.device));
     }
   }
-  // Fail closed. If the root disk cannot be resolved, exposing any disk for
-  // repartitioning would risk presenting the operating-system device.
+  // Fail closed. Without a known root disk we cannot safely assign mutation
+  // capabilities to any block device.
   if (excluded_disks.empty()) {
     std::cerr << "[sysutils][storage] Unable to resolve root disk; refusing "
                  "to expose storage devices."
@@ -664,12 +744,16 @@ std::vector<StorageEntry> list_safe_storage() {
   }
 
   std::vector<StorageEntry> entries;
+  const bool external_video_mounted = std::any_of(
+      rows.begin(), rows.end(), [](const BlockRow& candidate) {
+        return candidate.mountpoint == kVideoMountPoint;
+      });
   for (const auto& row : rows) {
     const auto disk =
         row.kind == "disk" ? canonical_device(row.device)
                            : canonical_device(row.parent_device);
-    if (excluded_disks.count(disk) || roots.count(canonical_device(row.device)) ||
-        row.read_only || !is_block_device(row.device)) {
+    const bool is_internal = excluded_disks.count(disk) != 0;
+    if (row.read_only || !is_block_device(row.device)) {
       continue;
     }
     StorageEntry entry;
@@ -680,12 +764,43 @@ std::vector<StorageEntry> list_safe_storage() {
     entry.label = row.label;
     entry.mountpoint = row.mountpoint;
     entry.size_bytes = row.size_bytes;
-    entry.mounted_at_video = row.mountpoint == kVideoMountPoint;
-    entry.can_format = row.kind == "partition";
-    entry.can_repartition = row.kind == "disk";
-    entry.can_mount = row.kind == "partition" && !row.filesystem.empty();
+    entry.internal = is_internal;
+    entry.mounted_at_video = row.mountpoint == kVideoMountPoint ||
+                             (is_internal && row.mountpoint == "/" &&
+                              !external_video_mounted);
+    const bool is_recording_partition =
+        row.kind == "partition" &&
+        (row.label == kRecordingsLabel || row.mountpoint == kVideoMountPoint);
+    const bool is_protected_system_entry =
+        is_internal && !is_recording_partition;
+    entry.can_format = row.kind == "partition" &&
+                       !is_protected_system_entry;
+    entry.can_repartition = row.kind == "disk" && !is_internal;
+    entry.can_mount = row.kind == "partition" &&
+                      !is_protected_system_entry &&
+                      !row.filesystem.empty();
     entry.free_bytes =
         row.kind == "partition" ? probe_free_bytes(row) : 0;
+    if (row.kind == "disk") {
+      std::uint64_t last_end = 0;
+      for (const auto& child : rows) {
+        if (child.kind != "partition" ||
+            canonical_device(child.parent_device) !=
+                canonical_device(row.device)) {
+          continue;
+        }
+        const auto end = child.start_bytes + child.size_bytes;
+        last_end = std::max(last_end, end);
+      }
+      entry.unallocated_bytes = row.size_bytes > last_end
+                                    ? row.size_bytes - last_end
+                                    : 0;
+      entry.can_create_partition =
+          entry.unallocated_bytes >= 1024ULL * 1024ULL * 1024ULL;
+      // Shrinking a mounted root filesystem is not safe. This remains false
+      // until an offline, reboot-assisted implementation is available.
+      entry.can_resize_partition = false;
+    }
     entries.push_back(std::move(entry));
   }
 
@@ -713,13 +828,25 @@ std::vector<StorageEntry> list_safe_storage() {
   return entries;
 }
 
+std::vector<StorageEntry> list_safe_storage() {
+  auto entries = list_storage_inventory();
+  entries.erase(
+      std::remove_if(entries.begin(), entries.end(),
+                     [](const StorageEntry& entry) {
+                       return entry.internal && !entry.can_format &&
+                              !entry.can_mount;
+                     }),
+      entries.end());
+  return entries;
+}
+
 bool is_storage_list_request(const std::string& line) {
   const auto type = extract_string_field(line, "type");
   return type && *type == "sysutil.storage.list.request";
 }
 
 std::string build_storage_list_response() {
-  g_last_inventory = list_safe_storage();
+  g_last_inventory = list_storage_inventory();
   std::ostringstream out;
   out << "{\"type\":\"sysutil.storage.list.response\",\"entries\":[";
   for (std::size_t i = 0; i < g_last_inventory.size(); ++i) {
@@ -735,12 +862,18 @@ std::string build_storage_list_response() {
         << json_escape(entry.label) << "\",\"mountpoint\":\""
         << json_escape(entry.mountpoint) << "\",\"size_bytes\":"
         << entry.size_bytes << ",\"free_bytes\":" << entry.free_bytes
+        << ",\"unallocated_bytes\":" << entry.unallocated_bytes
+        << ",\"internal\":" << (entry.internal ? "true" : "false")
         << ",\"mounted_at_video\":"
         << (entry.mounted_at_video ? "true" : "false")
         << ",\"can_format\":" << (entry.can_format ? "true" : "false")
         << ",\"can_repartition\":"
         << (entry.can_repartition ? "true" : "false")
         << ",\"can_mount\":" << (entry.can_mount ? "true" : "false")
+        << ",\"can_create_partition\":"
+        << (entry.can_create_partition ? "true" : "false")
+        << ",\"can_resize_partition\":"
+        << (entry.can_resize_partition ? "true" : "false")
         << "}";
   }
   out << "]}\n";
@@ -774,13 +907,17 @@ std::string handle_storage_action_request(const std::string& line) {
     ok = mount_for_recording(*entry, message);
   } else if (action == "migrate") {
     ok = migrate_recordings(*entry, message);
+  } else if (action == "create") {
+    ok = create_recording_partition(*entry, message);
+  } else if (action == "resize") {
+    message = "Resizing the system partition requires offline maintenance.";
   } else {
     message = "Unsupported storage action.";
   }
   set_status(ok ? "storage.action.complete" : "storage.action.failed",
              ok ? "Storage operation complete" : "Storage operation failed",
              message, ok ? 0 : 2);
-  g_last_inventory = list_safe_storage();
+  g_last_inventory = list_storage_inventory();
   return action_response(ok, id, action, message);
 }
 

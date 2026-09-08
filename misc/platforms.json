@@ -52,6 +52,13 @@
       "platform": "X_PLATFORM_TYPE_ALWINNER_X20",
       "log": "Detected Allwinner platform (X20).",
       "conditions": [
+        {"type": "file_exists", "path": "/usr/local/share/openhd_platform/x20"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ALWINNER_X20",
+      "log": "Detected Allwinner platform (X20) from Cedar device.",
+      "conditions": [
         {"type": "file_exists", "path": "/dev/cedar_dev"}
       ]
     },
