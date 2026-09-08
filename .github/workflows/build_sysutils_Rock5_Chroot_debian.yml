@@ -54,10 +54,9 @@ jobs:
           #!/bin/bash
           set -euo pipefail
           chmod 1777 /tmp || true
-          # Bullseye security metadata can temporarily be past Valid-Until on
-          # archived Rock5 images. The package signatures are still verified.
-          apt-get -o Acquire::Check-Valid-Until=false update --fix-missing
-          apt-get install -y cmake g++ python3
+          # For Bullseye, allow installation from archived/old packages that may no longer be in security repo
+          apt-get -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true update --fix-missing
+          apt-get install -y --fix-missing cmake g++ python3
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
           cd build
