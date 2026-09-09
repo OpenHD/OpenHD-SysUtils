@@ -52,6 +52,19 @@ jobs:
           cmake --build build --config Release
           cd build
           cpack -G DEB
+
+          package="$(find . -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "${package}"
+          package_root="$(mktemp -d)"
+          dpkg-deb --extract "${package}" "${package_root}"
+          test -x "${package_root}/usr/local/bin/openhd_sys_utils"
+          test -f "${package_root}/lib/systemd/system/openhd-sys-utils.service"
+          test -x "${package_root}/etc/init.d/openhd-sys-utils"
+          grep -Fqx 'ExecStart=/usr/local/bin/openhd_sys_utils' \
+            "${package_root}/lib/systemd/system/openhd-sys-utils.service"
+          grep -Fqx 'DAEMON=/usr/local/bin/openhd_sys_utils' \
+            "${package_root}/etc/init.d/openhd-sys-utils"
+
           cp *.deb /out/
           EOF
           chmod +x /opt/OpenHD-ChrootCompiler/additionalFiles/build_chroot.sh

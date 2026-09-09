@@ -140,6 +140,11 @@ install(
 
 if(OPENHD_X20_PACKAGE)
     install(
+        PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/init.d/openhd-sys-utils
+        DESTINATION /etc/init.d
+    )
+
+    install(
         PROGRAMS
             ${CMAKE_CURRENT_SOURCE_DIR}/old/x20/OpenHD_X20
             ${CMAKE_CURRENT_SOURCE_DIR}/old/x20/temperature_guardian
@@ -172,6 +177,9 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, dosfstools, util-linux, parted, wireguard-tools, curl")
+if(OPENHD_X20_PACKAGE)
+    string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", lsb-base")
+endif()
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"
