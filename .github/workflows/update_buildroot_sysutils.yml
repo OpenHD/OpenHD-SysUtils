@@ -1,7 +1,10 @@
 name: Update SysUtils in X21 Buildroot
 
 on:
-  push:
+  # Application-only X21 updates are published as a Cloudsmith component by
+  # build_x21_component.yml. Run this legacy Buildroot pin update only when a
+  # new base/SDK image is intentionally required.
+  workflow_dispatch:
 
 concurrency:
   group: update-sysutils-x21-buildroot
