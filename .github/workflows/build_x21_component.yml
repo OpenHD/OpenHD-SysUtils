@@ -1,0 +1,113 @@
+name: Build X21B SysUtils component
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - CMakeLists.txt
+      - inc/**
+      - misc/**
+      - src/**
+      - tools/**
+      - scripts/build_x21_component.sh
+      - .github/workflows/build_x21_component.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x21b-sysutils-component-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  X21_SDK_REPOSITORY: OpenHD/OpenHD-X21B
+  X21_SDK_RUN_ID: "34479273960"
+  X21_SDK_ARTIFACT: openhd-x21b-sdk
+
+jobs:
+  component:
+    runs-on: ubuntu-24.04
+    env:
+      CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+    steps:
+      - name: Validate credentials
+        env:
+          BUILDROOT_REPOSITORY_TOKEN: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+        run: |
+          test -n "${BUILDROOT_REPOSITORY_TOKEN}" || {
+            echo "::error::BUILDROOT_REPOSITORY_TOKEN needs read access to OpenHD-X21B and workflow access to OpenHD-ImageBuilder"
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download pinned X21B SDK
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.X21_SDK_REPOSITORY }}
+          run-id: ${{ env.X21_SDK_RUN_ID }}
+          name: ${{ env.X21_SDK_ARTIFACT }}
+          github-token: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+          path: x21-sdk-artifact
+
+      - name: Verify and extract SDK
+        run: |
+          set -euo pipefail
+          cd x21-sdk-artifact
+          sha256sum -c openhd-x21b-sdk.tar.gz.sha256
+          tar -xzf openhd-x21b-sdk.tar.gz -C "${RUNNER_TEMP}"
+          echo "X21_SDK_SHA256=$(sha256sum openhd-x21b-sdk.tar.gz | awk '{print $1}')" >>"${GITHUB_ENV}"
+          echo "X21_SDK_BUILDROOT_COMMIT=$(python3 -c 'import json; print(json.load(open("openhd-x21b-sdk.manifest.json"))["buildroot_commit"])')" >>"${GITHUB_ENV}"
+          echo "X21_SDK_DIR=${RUNNER_TEMP}/openhd-x21b-sdk" >>"${GITHUB_ENV}"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++ ninja-build
+
+      - name: Cross-compile and package SysUtils
+        run: ./scripts/build_x21_component.sh "${X21_SDK_DIR}" "${GITHUB_WORKSPACE}/x21-component"
+
+      - name: Upload SysUtils component artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhd-sys-utils-x21b-component
+          path: x21-component/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Install Cloudsmith CLI
+        if: env.CLOUDSMITH_API_KEY != ''
+        run: pipx install cloudsmith-cli
+
+      - name: Publish component files to Cloudsmith
+        if: env.CLOUDSMITH_API_KEY != ''
+        run: |
+          set -euo pipefail
+          for package in x21-component/*; do
+            cloudsmith push raw --republish openhd/dev-release "${package}"
+          done
+
+      - name: Trigger ImageBuilder X21 assembly
+        if: env.CLOUDSMITH_API_KEY != ''
+        env:
+          GH_TOKEN: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+        run: |
+          set -euo pipefail
+          base=https://dl.cloudsmith.io/public/openhd/dev-release/raw/files
+          if ! curl --fail --silent --show-error --location \
+            "${base}/openhd-x21b-latest.tar.gz.manifest.json" -o /tmp/openhd.json || \
+             ! curl --fail --silent --show-error --location \
+            "${base}/openhd-sys-utils-x21b-latest.tar.gz.manifest.json" -o /tmp/sysutils.json; then
+            echo "The other X21B component is not published yet; ImageBuilder will be triggered by its workflow."
+            exit 0
+          fi
+          if ! python3 -c 'import json; a=json.load(open("/tmp/openhd.json")); b=json.load(open("/tmp/sysutils.json")); assert a["sdk_sha256"] == b["sdk_sha256"]'; then
+            echo "The published X21B components use different SDKs; waiting for the other component to rebuild."
+            exit 0
+          fi
+          gh workflow run update-image.yml --repo OpenHD/OpenHD-ImageBuilder --ref dev-release -f target=x21-update
