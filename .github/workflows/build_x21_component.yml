@@ -87,7 +87,7 @@ jobs:
       - name: Trigger ImageBuilder X21 assembly
         if: env.CLOUDSMITH_API_KEY != '' && env.IMAGEBUILDER_WORKFLOW_TOKEN != ''
         env:
-          GH_TOKEN: ${{ secrets.IMAGEBUILDER_WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ env.IMAGEBUILDER_WORKFLOW_TOKEN }}
         run: |
           set -euo pipefail
           base=https://dl.cloudsmith.io/public/openhd/dev-release/raw/files
