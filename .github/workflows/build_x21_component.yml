@@ -29,15 +29,13 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      IMAGEBUILDER_WORKFLOW_TOKEN: ${{ secrets.IMAGEBUILDER_WORKFLOW_TOKEN }}
     steps:
-      - name: Validate credentials
-        env:
-          BUILDROOT_REPOSITORY_TOKEN: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+      - name: Check optional ImageBuilder trigger token
         run: |
-          test -n "${BUILDROOT_REPOSITORY_TOKEN}" || {
-            echo "::error::BUILDROOT_REPOSITORY_TOKEN needs workflow access to OpenHD-ImageBuilder"
-            exit 1
-          }
+          if [[ -z "${IMAGEBUILDER_WORKFLOW_TOKEN}" ]]; then
+            echo "::warning::IMAGEBUILDER_WORKFLOW_TOKEN is not configured; the component will publish normally but SysUtils-only changes cannot trigger ImageBuilder automatically."
+          fi
 
       - uses: actions/checkout@v4
         with:
@@ -87,21 +85,15 @@ jobs:
           done
 
       - name: Trigger ImageBuilder X21 assembly
-        if: env.CLOUDSMITH_API_KEY != ''
+        if: env.CLOUDSMITH_API_KEY != '' && env.IMAGEBUILDER_WORKFLOW_TOKEN != ''
         env:
-          GH_TOKEN: ${{ secrets.BUILDROOT_REPOSITORY_TOKEN }}
+          GH_TOKEN: ${{ secrets.IMAGEBUILDER_WORKFLOW_TOKEN }}
         run: |
           set -euo pipefail
           base=https://dl.cloudsmith.io/public/openhd/dev-release/raw/files
-          if ! curl --fail --silent --show-error --location \
-            "${base}/openhd-x21b-latest.tar.gz.manifest.json" -o /tmp/openhd.json || \
-             ! curl --fail --silent --show-error --location \
-            "${base}/openhd-sys-utils-x21b-latest.tar.gz.manifest.json" -o /tmp/sysutils.json; then
-            echo "The other X21B component is not published yet; ImageBuilder will be triggered by its workflow."
-            exit 0
-          fi
-          if ! python3 -c 'import json; a=json.load(open("/tmp/openhd.json")); b=json.load(open("/tmp/sysutils.json")); assert a["sdk_sha256"] == b["sdk_sha256"]'; then
-            echo "The published X21B components use different SDKs; waiting for the other component to rebuild."
-            exit 0
-          fi
+          curl --fail --silent --show-error --location \
+            "${base}/openhd-x21b-latest.tar.gz.manifest.json" -o /tmp/openhd.json
+          curl --fail --silent --show-error --location \
+            "${base}/openhd-sys-utils-x21b-latest.tar.gz.manifest.json" -o /tmp/sysutils.json
+          python3 -c 'import json; a=json.load(open("/tmp/openhd.json")); b=json.load(open("/tmp/sysutils.json")); assert a["sdk_sha256"] == b["sdk_sha256"]'
           gh workflow run update-image.yml --repo OpenHD/OpenHD-ImageBuilder --ref dev-release -f target=x21-update
