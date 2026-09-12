@@ -10,10 +10,11 @@
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A", "id": 21, "display": "RADXA RK3588S"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B", "id": 22, "display": "RADXA RK3588"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5", "id": 23, "display": "RADXA CM5"},
-    {"key": "X_PLATFORM_TYPE_OPENHD_X21", "id": 28, "display": "X21(B)"},
+    {"key": "X_PLATFORM_TYPE_OPENHD_X21", "id": 28, "display": "OpenHD X21"},
+    {"key": "X_PLATFORM_TYPE_LUCKFOX_AURA", "id": 29, "display": "Luckfox Aura (RV1126B)"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_RV110X", "id": 25, "display": "RV110X"},
-    {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27},
+    {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27, "display": "Luckfox Lyra (RK3506)"},
     {"key": "X_PLATFORM_TYPE_ALWINNER_X20", "id": 30, "display": "X20"},
     {"key": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7S", "id": 31},
     {"key": "X_PLATFORM_TYPE_ALWINNER_CUBIE_A7Z", "id": 32, "display": "A733"},
@@ -172,8 +173,22 @@
       ]
     },
     {
+      "platform": "X_PLATFORM_TYPE_LUCKFOX_AURA",
+      "log": "Detected Luckfox Aura (RV1126B)",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["luckfox,aura", "luckfox-aura", "luckfox,aura-rv1126"], "case_insensitive": true}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_LUCKFOX_AURA",
+      "log": "Detected Luckfox Aura from model name.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Luckfox Aura", "Aura RV1126"], "case_insensitive": true}
+      ]
+    },
+    {
       "platform": "X_PLATFORM_TYPE_OPENHD_X21",
-      "log": "Detected OpenHD X21",
+      "log": "Detected OpenHD X21 (RV1126)",
       "conditions": [
         {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rv1126"}
       ]
@@ -197,6 +212,13 @@
       "log": "Detected Luckfox Lyra.",
       "conditions": [
         {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3506"}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_LUCKFOX_LYRA",
+      "log": "Detected Luckfox Lyra from model name.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Luckfox Lyra", "rk3506"], "case_insensitive": true}
       ]
     },
     {

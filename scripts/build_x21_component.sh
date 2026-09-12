@@ -73,6 +73,15 @@ cp "${stage_dir}/component-manifest.json" \
     >openhd-sys-utils-x21b-latest.tar.gz.sha256
   cp "${package_name}.manifest.json" \
     openhd-sys-utils-x21b-latest.tar.gz.manifest.json
+
+  # Provide Luckfox Aura (RV1126B) packages
+  aura_package_name="openhd-sys-utils-aura-${package_version}.tar.gz"
+  cp "${package_name}" "${aura_package_name}"
+  sha256sum "${aura_package_name}" >"${aura_package_name}.sha256"
+  sed 's/"platform": "x21b"/"platform": "luckfox-aura"/' "${package_name}.manifest.json" >"${aura_package_name}.manifest.json"
+  cp "${aura_package_name}" openhd-sys-utils-aura-latest.tar.gz
+  sha256sum openhd-sys-utils-aura-latest.tar.gz >openhd-sys-utils-aura-latest.tar.gz.sha256
+  cp "${aura_package_name}.manifest.json" openhd-sys-utils-aura-latest.tar.gz.manifest.json
 )
 "${READELF}" -h "${stage_dir}/usr/bin/openhd_sys_utils" | grep -q 'Machine:.*AArch64'
 "${READELF}" -d "${stage_dir}/usr/bin/openhd_sys_utils" | grep NEEDED
