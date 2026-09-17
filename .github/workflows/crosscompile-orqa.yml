@@ -7,7 +7,7 @@ on:
         required: false
   push:
     branches:
-      - "release"
+      - "dev-release"
       - "openhd-3.0"
 
 jobs:
