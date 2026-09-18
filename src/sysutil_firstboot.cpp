@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include "platforms_generated.h"
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
 #include "sysutil_display.h"
@@ -36,6 +37,9 @@
 
 namespace sysutil {
 namespace {
+
+constexpr int kOrqaRekindleCameraType = 124;
+constexpr const char* kOrqaRekindleResolution = "960x720@60";
 
 // Checks if a file exists without throwing.
 bool file_exists(const std::string& path) {
@@ -109,6 +113,16 @@ void run_firstboot_tasks() {
       config = refreshed;
     }
   }
+  const auto info = discover_platform_info();
+  if (info.platform_type == X_PLATFORM_TYPE_ORQA) {
+    if (!config.camera_type.has_value()) {
+      config.camera_type = kOrqaRekindleCameraType;
+    }
+    if (!config.camera_resolution_fps.has_value()) {
+      config.camera_resolution_fps = kOrqaRekindleResolution;
+    }
+    (void)write_sysutil_config(config);
+  }
   if (apply_camera_config_if_needed()) {
     needs_reboot = true;
   }
@@ -116,7 +130,6 @@ void run_firstboot_tasks() {
     needs_reboot = true;
   }
 
-  const auto info = discover_platform_info();
   config.platform_type = info.platform_type;
   config.platform_name = info.platform_name;
   config.init_system = detect_init_system();
