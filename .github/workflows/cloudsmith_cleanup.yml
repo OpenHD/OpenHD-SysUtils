@@ -105,7 +105,7 @@ jobs:
                   return None
             return None
 
-          cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+          cutoff = datetime.now(timezone.utc) - timedelta(days=60)
           delete_flags: List[str] = []
           try:
             help_text = run_text(["cloudsmith", "delete", "--help"]).lower()
@@ -163,7 +163,7 @@ jobs:
               count = download_count(item)
               if count is None:
                 continue
-              if count < 20:
+              if count < 10:
                 matched.append(slug)
 
             if not matched:
