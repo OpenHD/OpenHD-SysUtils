@@ -11,3 +11,4 @@ cmake --build build --config Release
 cd build
 cpack -G DEB
 cp *.deb /out/
+
