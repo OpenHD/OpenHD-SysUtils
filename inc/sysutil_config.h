@@ -79,6 +79,7 @@ struct SysutilConfig {
   std::optional<std::string> nw_manual_forwarding_ips;
   std::optional<bool> nw_forward_to_localhost_58xx;
   // Ethernet link configuration.
+  std::optional<bool> disable_ethernet_link;
   std::optional<std::string> ground_unit_ip;
   std::optional<std::string> air_unit_ip;
   std::optional<int> video_port;

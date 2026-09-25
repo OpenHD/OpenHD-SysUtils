@@ -247,6 +247,12 @@ void sync_settings_from_files() {
         config.disable_openhd_service = *disable_openhd;
         changed = true;
       }
+      if (auto disable_ethernet_link =
+              extract_bool_field(content, "disable_ethernet_link");
+          disable_ethernet_link.has_value()) {
+        config.disable_ethernet_link = *disable_ethernet_link;
+        changed = true;
+      }
       if (auto debug = extract_bool_field(content, "debug");
           debug.has_value()) {
         config.debug_enabled = *debug;
@@ -388,6 +394,8 @@ std::string build_settings_response() {
   const int gen_rf_metrics_level = config.gen_rf_metrics_level.value_or(0);
   const bool disable_openhd_service =
       config.disable_openhd_service.value_or(false);
+  const bool disable_ethernet_link =
+      config.disable_ethernet_link.value_or(false);
 
   std::ostringstream out;
   out << "{\"type\":\"sysutil.settings.response\",\"ok\":true"
@@ -478,7 +486,9 @@ std::string build_settings_response() {
       << (gen_enable_last_known_position ? "true" : "false")
       << ",\"gen_rf_metrics_level\":" << gen_rf_metrics_level
       << ",\"disable_openhd_service\":"
-      << (disable_openhd_service ? "true" : "false") << "}\n";
+      << (disable_openhd_service ? "true" : "false")
+      << ",\"disable_ethernet_link\":"
+      << (disable_ethernet_link ? "true" : "false") << "}\n";
   return out.str();
 }
 
@@ -610,6 +620,12 @@ std::string handle_settings_update(const std::string& line) {
   if (auto nw_ethernet_card = extract_string_field(line, "nw_ethernet_card");
       nw_ethernet_card.has_value()) {
     config.nw_ethernet_card = *nw_ethernet_card;
+    changed = true;
+  }
+  if (auto disable_ethernet_link =
+          extract_bool_field(line, "disable_ethernet_link");
+      disable_ethernet_link.has_value()) {
+    config.disable_ethernet_link = *disable_ethernet_link;
     changed = true;
   }
   if (auto nw_manual_forwarding_ips =
