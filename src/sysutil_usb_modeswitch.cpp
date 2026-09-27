@@ -16,7 +16,12 @@ namespace {
 
 namespace fs = std::filesystem;
 constexpr const char* kUsbRoot = "/sys/bus/usb/devices";
-constexpr auto kRetryInterval = std::chrono::seconds(30);
+// The usb-modeswitch package already starts an eject from udev on device add.
+// Give that first attempt time to finish before SysUtils retries the device.
+constexpr auto kUdevGrace = std::chrono::seconds(30);
+// Some 0bda:1a2b adapters accept the eject only on a subsequent attempt.
+// Wi-Fi discovery retries every five seconds while no compatible card exists.
+constexpr auto kRetryInterval = std::chrono::seconds(5);
 constexpr int kMaxAttemptsPerPort = 3;
 
 std::string read_trimmed(const fs::path& path) {
@@ -72,6 +77,7 @@ bool switch_realtek_zerocd_wifi() {
   if (!fs::exists(kUsbRoot, ec)) return false;
   const char* binary = modeswitch_binary();
   static std::map<std::string, std::pair<int, std::chrono::steady_clock::time_point>> attempts;
+  static std::map<std::string, std::chrono::steady_clock::time_point> first_seen;
   bool switched = false;
   for (const auto& entry : fs::directory_iterator(kUsbRoot, ec)) {
     const auto device = entry.path();
@@ -86,6 +92,8 @@ bool switch_realtek_zerocd_wifi() {
     // A replug gets a new device number and must have its own retry budget.
     const auto instance = port + ":" + bus + ":" + devnum;
     const auto now = std::chrono::steady_clock::now();
+    const auto seen = first_seen.emplace(instance, now).first;
+    if (now - seen->second < kUdevGrace) continue;
     auto& attempt = attempts[instance];
     if (attempt.first >= kMaxAttemptsPerPort ||
         (attempt.first > 0 && now - attempt.second < kRetryInterval)) continue;
