@@ -26,11 +26,15 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <thread>
+#include <vector>
+#include <sys/stat.h>
 
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
@@ -52,6 +56,9 @@ constexpr const char* kGroundFile = "/Config/openhd/ground.txt";
 constexpr const char* kRecordFile = "/Config/openhd/record.txt";
 constexpr const char* kSettingsJson = "/Config/settings.json";
 constexpr const char* kSettingsJsonSub = "/Config/openhd/settings.json";
+constexpr const char* kQOpenHdSettings = "/root/.config/OpenHD/QOpenHD.conf";
+constexpr const char* kFleetControlCredentials =
+    "/root/.config/OpenHD/FleetControlCredentials.json";
 constexpr bool kDefaultWifiEnableAutodetect = true;
 constexpr const char* kDefaultNwEthernetCard = "RPI_ETHERNET_ONLY";
 constexpr int kDefaultVideoPort = 5000;
@@ -139,6 +146,112 @@ int normalize_camera_type(int value) {
     return kUsbGenericCameraType;
   }
   return value;
+}
+
+bool set_qopenhd_mapbox_api_key(const std::string& token) {
+  if (token.empty() || token.find_first_of("\r\n") != std::string::npos ||
+      token.find('\0') != std::string::npos) {
+    return false;
+  }
+
+  const std::filesystem::path settings_path(kQOpenHdSettings);
+  std::error_code ec;
+  std::filesystem::create_directories(settings_path.parent_path(), ec);
+  if (ec) {
+    return false;
+  }
+
+  std::vector<std::string> lines;
+  {
+    std::ifstream existing(settings_path);
+    std::string line;
+    while (std::getline(existing, line)) {
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
+      lines.push_back(line);
+    }
+  }
+
+  bool in_general = false;
+  bool found_general = false;
+  bool replaced = false;
+  std::size_t insert_at = lines.size();
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const auto& line = lines[i];
+    if (line.size() >= 2 && line.front() == '[' && line.back() == ']') {
+      if (in_general && insert_at == lines.size()) {
+        insert_at = i;
+      }
+      in_general = line == "[General]";
+      found_general = found_general || in_general;
+      continue;
+    }
+    if (in_general && line.rfind("map_api_key=", 0) == 0) {
+      lines[i] = "map_api_key=" + token;
+      replaced = true;
+      break;
+    }
+  }
+
+  if (!replaced) {
+    if (!found_general) {
+      if (!lines.empty() && !lines.back().empty()) {
+        lines.emplace_back();
+      }
+      lines.emplace_back("[General]");
+      lines.emplace_back("map_api_key=" + token);
+    } else {
+      lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_at),
+                   "map_api_key=" + token);
+    }
+  }
+
+  const auto temporary_path = settings_path.string() + ".tmp";
+  std::ofstream output(temporary_path, std::ios::trunc);
+  if (!output) {
+    return false;
+  }
+  for (const auto& line : lines) {
+    output << line << '\n';
+  }
+  output.close();
+  if (!output) {
+    std::filesystem::remove(temporary_path, ec);
+    return false;
+  }
+  if (std::rename(temporary_path.c_str(), settings_path.string().c_str()) != 0) {
+    std::filesystem::remove(temporary_path, ec);
+    return false;
+  }
+  return true;
+}
+
+bool write_fleetcontrol_credentials(const std::string& username,
+                                    const std::string& password) {
+  if (username.empty() || password.empty()) {
+    return false;
+  }
+  const std::filesystem::path credentials_path(kFleetControlCredentials);
+  std::error_code ec;
+  std::filesystem::create_directories(credentials_path.parent_path(), ec);
+  if (ec) {
+    return false;
+  }
+  const auto temporary_path = credentials_path.string() + ".tmp";
+  std::ofstream output(temporary_path, std::ios::trunc);
+  if (!output) {
+    return false;
+  }
+  output << "{\n  \"username\": \"" << json_escape(username)
+         << "\",\n  \"password\": \"" << json_escape(password) << "\"\n}\n";
+  output.close();
+  if (!output || ::chmod(temporary_path.c_str(), S_IRUSR | S_IWUSR) != 0 ||
+      std::rename(temporary_path.c_str(), credentials_path.string().c_str()) != 0) {
+    std::filesystem::remove(temporary_path, ec);
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -235,6 +348,24 @@ void sync_settings_from_files() {
       if (auto value = extract_string_field(content, "display_connector"); value) {
         config.display_connector = *value;
         changed = true;
+      }
+
+      if (auto value = extract_string_field(content, "mapbox_api_key"); value) {
+        if (!set_qopenhd_mapbox_api_key(*value)) {
+          std::cerr << "Failed to import the Mapbox access token into QOpenHD settings."
+                    << std::endl;
+        }
+      }
+
+      const auto fleetcontrol_username =
+          extract_string_field(content, "fleetcontrol_username");
+      const auto fleetcontrol_password =
+          extract_string_field(content, "fleetcontrol_password");
+      if (fleetcontrol_username && fleetcontrol_password &&
+          !write_fleetcontrol_credentials(*fleetcontrol_username,
+                                          *fleetcontrol_password)) {
+        std::cerr << "Failed to import FleetControl credentials for QOpenHD."
+                  << std::endl;
       }
 
       // Parse role

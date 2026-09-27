@@ -51,6 +51,7 @@
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_config.h"
+#include "sysutil_usb_modeswitch.h"
 
 namespace sysutil {
 namespace {
@@ -1906,6 +1907,7 @@ std::vector<WifiCardInfo> detect_artosyn_cards() {
 
 void refresh_wifi_info_impl() {
   log_wifi("Refreshing Wi-Fi info.");
+  (void)switch_realtek_zerocd_wifi();
   const auto overrides = load_overrides();
   const auto tx_overrides = load_tx_power_overrides();
   const auto profiles = load_wifi_card_profiles();

@@ -77,6 +77,7 @@ add_executable(openhd_sys_utils
     src/sysutil_part.cpp
     src/sysutil_video.cpp
     src/sysutil_wifi.cpp
+    src/sysutil_usb_modeswitch.cpp
     ${GENERATED_PLATFORMS_HEADER}
 )
 
@@ -177,6 +178,9 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenHD system utilities")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "init-system-helpers, dosfstools, util-linux, parted, wireguard-tools, curl")
+if(NOT OPENHD_X20_PACKAGE)
+    string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", usb-modeswitch")
+endif()
 if(OPENHD_X20_PACKAGE)
     string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", lsb-base")
 endif()
