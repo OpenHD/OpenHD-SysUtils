@@ -116,11 +116,13 @@ enum class ConfigLoadResult {
 
 // Returns the on-disk sysutils config path.
 const char* sysutil_config_path();
-// Loads config values from disk into the provided struct.
+// Reads disk once per process, then returns the in-memory configuration.
+// External file edits take effect only after restarting SysUtils.
 ConfigLoadResult load_sysutil_config(SysutilConfig& config);
 // Writes config values only if the config file does not yet exist.
 bool write_sysutil_config_if_missing(const SysutilConfig& config);
-// Writes config values, overwriting any existing file.
+// Writes config values, overwriting any existing file and updating the cache
+// only after a successful write.
 bool write_sysutil_config(const SysutilConfig& config);
 // Removes the config file if it exists.
 bool remove_sysutil_config();

@@ -25,6 +25,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 #include "sysutil_protocol.h"
@@ -35,6 +36,10 @@ namespace {
 // Sysutils config location on the target system.
 constexpr const char* kConfigPath =
     "/usr/local/share/OpenHD/SysUtils/config.json";
+
+std::recursive_mutex config_mutex;
+std::optional<ConfigLoadResult> cached_result;
+SysutilConfig cached_config;
 
 // Escapes JSON string content for output.
 std::string json_escape(const std::string& input) {
@@ -70,8 +75,8 @@ std::string json_escape(const std::string& input) {
 // Returns the config path for callers that need to log or remove it.
 const char* sysutil_config_path() { return kConfigPath; }
 
-// Loads config fields from disk, if present.
-ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
+// Only the initial load may read the backing file.
+static ConfigLoadResult read_config_from_disk(SysutilConfig& config) {
   std::error_code ec;
   if (!std::filesystem::exists(kConfigPath, ec)) {
     return ConfigLoadResult::NotFound;
@@ -162,10 +167,22 @@ ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
   return ConfigLoadResult::Loaded;
 }
 
+ConfigLoadResult load_sysutil_config(SysutilConfig& config) {
+  std::lock_guard<std::recursive_mutex> lock(config_mutex);
+  if (!cached_result.has_value()) {
+    cached_result = read_config_from_disk(cached_config);
+  }
+  config = cached_config;
+  return *cached_result;
+}
+
 // Writes the config only when no file exists yet.
 bool write_sysutil_config_if_missing(const SysutilConfig& config) {
-  std::error_code ec;
-  if (std::filesystem::exists(kConfigPath, ec)) {
+  std::lock_guard<std::recursive_mutex> lock(config_mutex);
+  SysutilConfig existing;
+  const auto result = load_sysutil_config(existing);
+  if (result == ConfigLoadResult::Error) return false;
+  if (result == ConfigLoadResult::Loaded) {
     return true;
   }
   return write_sysutil_config(config);
@@ -173,6 +190,7 @@ bool write_sysutil_config_if_missing(const SysutilConfig& config) {
 
 // Writes the config file, replacing any existing file.
 bool write_sysutil_config(const SysutilConfig& config) {
+  std::lock_guard<std::recursive_mutex> lock(config_mutex);
   std::error_code ec;
   std::filesystem::create_directories(
       std::filesystem::path(kConfigPath).parent_path(), ec);
@@ -274,16 +292,22 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_bool("disable_openhd_service", config.disable_openhd_service);
 
   file << "\n}\n";
-  return static_cast<bool>(file);
+  file.close();
+  if (!file) return false;
+  cached_config = config;
+  cached_result = ConfigLoadResult::Loaded;
+  return true;
 }
 
 // Removes the config file, if it exists.
 bool remove_sysutil_config() {
+  std::lock_guard<std::recursive_mutex> lock(config_mutex);
   std::error_code ec;
-  if (!std::filesystem::exists(kConfigPath, ec)) {
-    return true;
-  }
-  return std::filesystem::remove(kConfigPath, ec);
+  std::filesystem::remove(kConfigPath, ec);
+  if (ec) return false;
+  cached_config = SysutilConfig{};
+  cached_result = ConfigLoadResult::NotFound;
+  return true;
 }
 
 }  // namespace sysutil
