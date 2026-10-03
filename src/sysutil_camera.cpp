@@ -63,6 +63,7 @@ const std::vector<CameraProfile> kProfiles = {
     {45, "kms", "arducam-pivariety", true, nullptr},
     {46, "kms", "arducam-pivariety", true, nullptr},
     {47, "kms", "imx662", true, nullptr},
+    {48, "kms", "imx415", true, nullptr},
     {60, "kms", "veyecam2m-overlay", false, nullptr},
     {61, "kms", "csimx307-overlay", false, nullptr},
     {62, "kms", "cssc132-overlay", false, nullptr},
