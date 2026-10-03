@@ -124,8 +124,11 @@ install(TARGETS openhd_sys_utils
     RUNTIME DESTINATION /usr/local/bin
 )
 
+configure_file(sbin/openhd-silent-boot-setup
+    ${CMAKE_CURRENT_BINARY_DIR}/openhd-silent-boot-setup
+    @ONLY NEWLINE_STYLE UNIX)
 install(
-    PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/sbin/openhd-silent-boot-setup
+    PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/openhd-silent-boot-setup
     DESTINATION /usr/local/sbin
 )
 
@@ -185,8 +188,16 @@ if(OPENHD_X20_PACKAGE)
     string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", lsb-base")
 endif()
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
+# Windows checkouts can use CRLF; Debian maintainer scripts require Unix shebangs.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/packaging")
+foreach(_maintainer_script postinst prerm postrm)
+    configure_file("packaging/${_maintainer_script}"
+        "${CMAKE_CURRENT_BINARY_DIR}/packaging/${_maintainer_script}"
+        @ONLY NEWLINE_STYLE UNIX)
+endforeach()
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm"
+    "${CMAKE_CURRENT_BINARY_DIR}/packaging/postinst;${CMAKE_CURRENT_BINARY_DIR}/packaging/prerm;${CMAKE_CURRENT_BINARY_DIR}/packaging/postrm"
 )
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_CURRENT_BINARY_DIR}/cpack_project_config.cmake)
 configure_file(

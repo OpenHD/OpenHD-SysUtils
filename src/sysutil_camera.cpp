@@ -67,6 +67,7 @@ const std::vector<CameraProfile> kProfiles = {
     {61, "kms", "csimx307-overlay", false, nullptr},
     {62, "kms", "cssc132-overlay", false, nullptr},
     {63, "kms", "veye_mvcam-overlay", false, nullptr},
+    {64, "kms", "veye_gxcam", false, nullptr},
     {80, nullptr, nullptr, false, "rock-5b-hdmi1-8k"},
     {81, nullptr, nullptr, false, "rpi-camera-v1_3"},
     {82, nullptr, nullptr, false, "rpi-camera-v2"},
