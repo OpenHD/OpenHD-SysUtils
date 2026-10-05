@@ -35,6 +35,7 @@
 #include "sysutil_storage.h"
 #include "sysutil_video.h"
 #include "sysutil_wifi.h"
+#include "sysutil_devourer_usb.h"
 
 namespace {
 constexpr std::string_view kSocketDir = "/run/openhd";
@@ -421,6 +422,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Resolve legacy EU kernel ownership before detection or starting OpenHD.
+    sysutil::prepare_devourer_eu_usb();
     remove_space_image();
     sysutil::init_leds();
     sysutil::set_status("sysutils.started", "Sysutils started",

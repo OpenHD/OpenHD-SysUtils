@@ -2,6 +2,14 @@
 
 set -e
 
+case "$1" in
+    remove|purge)
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
 if [ "$1" = "purge" ]; then
     if command -v update-rc.d >/dev/null 2>&1; then
         update-rc.d openhd-sys-utils remove || true

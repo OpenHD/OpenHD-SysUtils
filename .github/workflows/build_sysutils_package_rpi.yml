@@ -60,6 +60,8 @@ jobs:
 
             cmake -S . -B build -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
             cmake --build build --config "${BUILD_TYPE}"
+            (cd build && ctest --output-on-failure)
+            ./build/openhd_sys_utils --version
 
             cd build
             cpack -G DEB

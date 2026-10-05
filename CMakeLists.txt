@@ -4,6 +4,12 @@ project(openhd_sys_utils VERSION 1.0.3 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(OPENHD_X20_PACKAGE "Include the X20-only runtime assets" OFF)
+option(OPENHD_DEVOURER_RTL8812EU
+    "Reserve RTL8812EU adapters for OpenHD's Devourer backend"
+    ON)
+if(NOT OPENHD_DEVOURER_RTL8812EU)
+    message(FATAL_ERROR "All OpenHD targets require Devourer USB ownership")
+endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -78,6 +84,7 @@ add_executable(openhd_sys_utils
     src/sysutil_video.cpp
     src/sysutil_wifi.cpp
     src/sysutil_usb_modeswitch.cpp
+    src/sysutil_devourer_usb.cpp
     ${GENERATED_PLATFORMS_HEADER}
 )
 
@@ -87,6 +94,20 @@ target_include_directories(openhd_sys_utils PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+if(OPENHD_DEVOURER_RTL8812EU)
+    target_compile_definitions(openhd_sys_utils PRIVATE OPENHD_DEVOURER_RTL8812EU=1)
+    # These are package-owned policy files, not local administrator conffiles.
+    # Apply the same ownership policy on every target, including X20.
+    foreach(_policy openhd-devourer-eu.conf 70-openhd-devourer-eu.rules)
+        configure_file(misc/${_policy} ${CMAKE_CURRENT_BINARY_DIR}/${_policy}
+            @ONLY NEWLINE_STYLE UNIX)
+    endforeach()
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/openhd-devourer-eu.conf
+        DESTINATION /lib/modprobe.d)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/70-openhd-devourer-eu.rules
+        DESTINATION /lib/udev/rules.d)
+endif()
 
 if(OPENHD_X20_PACKAGE)
     target_compile_definitions(openhd_sys_utils PRIVATE
@@ -98,9 +119,24 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(test_devourer_usb_ownership
+        tests/test_devourer_usb_ownership.cpp src/sysutil_devourer_usb.cpp)
+    target_include_directories(test_devourer_usb_ownership PRIVATE inc)
+    if(OPENHD_DEVOURER_RTL8812EU)
+        target_compile_definitions(test_devourer_usb_ownership PRIVATE
+            OPENHD_DEVOURER_RTL8812EU=1)
+    endif()
+    add_test(NAME devourer_usb_ownership COMMAND test_devourer_usb_ownership)
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
     CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     target_link_libraries(openhd_sys_utils PRIVATE stdc++fs)
+    if(BUILD_TESTING)
+        target_link_libraries(test_devourer_usb_ownership PRIVATE stdc++fs)
+    endif()
 endif()
 
 set(BUILD_VERSION_FILE ${CMAKE_CURRENT_BINARY_DIR}/build_version.txt)

@@ -1,0 +1,5 @@
+# Also protect an interface from a driver loaded before package installation.
+# Match only EU USB identities; BU, CU, onboard Wi-Fi and Ethernet stay available.
+ACTION=="add|change", SUBSYSTEM=="net", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="a81a", ENV{NM_UNMANAGED}="1"
+ACTION=="add|change", SUBSYSTEM=="net", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="a82a", ENV{NM_UNMANAGED}="1"
+ACTION=="add|change", SUBSYSTEM=="net", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="e822", ENV{NM_UNMANAGED}="1"

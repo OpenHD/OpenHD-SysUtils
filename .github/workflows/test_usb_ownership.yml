@@ -1,0 +1,39 @@
+name: Test Devourer USB ownership
+
+on:
+  push:
+    paths:
+      - CMakeLists.txt
+      - inc/sysutil_devourer_usb.h
+      - src/sysutil_devourer_usb.cpp
+      - src/openhd_sys_utils.cpp
+      - tests/**
+      - misc/openhd-devourer-eu.conf
+      - misc/70-openhd-devourer-eu.rules
+      - .github/workflows/test_usb_ownership.yml
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        x20: ['ON', 'OFF']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DOPENHD_X20_PACKAGE=${{ matrix.x20 }}
+          cmake --build build --parallel 2
+          (cd build && ctest --output-on-failure)
+      - name: Check packaged ownership policy
+        run: |
+          DESTDIR="$RUNNER_TEMP/stage" cmake --install build
+          for policy in lib/modprobe.d/openhd-devourer-eu.conf lib/udev/rules.d/70-openhd-devourer-eu.rules; do
+            test -f "$RUNNER_TEMP/stage/$policy"
+          done

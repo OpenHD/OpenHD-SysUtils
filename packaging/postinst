@@ -4,6 +4,9 @@ set -e
 
 case "$1" in
     configure|triggered)
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload >/dev/null 2>&1 || true
+        fi
         if [ -x /usr/local/sbin/openhd-silent-boot-setup ]; then
             /usr/local/sbin/openhd-silent-boot-setup || true
         fi
