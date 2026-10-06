@@ -395,7 +395,7 @@ std::string build_settings_response() {
   const bool disable_openhd_service =
       config.disable_openhd_service.value_or(false);
   const bool disable_ethernet_link =
-      config.disable_ethernet_link.value_or(false);
+      config.disable_ethernet_link.value_or(true);
 
   std::ostringstream out;
   out << "{\"type\":\"sysutil.settings.response\",\"ok\":true"
