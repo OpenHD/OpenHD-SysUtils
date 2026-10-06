@@ -136,6 +136,8 @@ static ConfigLoadResult read_config_from_disk(SysutilConfig& config) {
   config.nw_forward_to_localhost_58xx =
       extract_bool_field(content, "nw_forward_to_localhost_58xx");
   config.ground_unit_ip = extract_string_field(content, "ground_unit_ip");
+  config.disable_ethernet_link =
+      extract_bool_field(content, "disable_ethernet_link");
   config.air_unit_ip = extract_string_field(content, "air_unit_ip");
   config.video_port = extract_int_field(content, "video_port");
   config.telemetry_port = extract_int_field(content, "telemetry_port");
@@ -272,6 +274,7 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_bool("nw_forward_to_localhost_58xx",
              config.nw_forward_to_localhost_58xx);
   write_string("ground_unit_ip", config.ground_unit_ip);
+  write_bool("disable_ethernet_link", config.disable_ethernet_link);
   write_string("air_unit_ip", config.air_unit_ip);
   write_int("video_port", config.video_port);
   write_int("telemetry_port", config.telemetry_port);
