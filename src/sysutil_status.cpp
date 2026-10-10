@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cctype>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <sys/stat.h>
 
@@ -37,6 +38,7 @@ namespace sysutil {
 namespace {
 
 StatusSnapshot g_status;
+std::mutex g_status_mutex;
 
 std::uint64_t now_ms() {
   using namespace std::chrono;
@@ -78,12 +80,14 @@ void update_status(const std::string& type,
                    const std::optional<std::string>& state,
                    const std::optional<std::string>& description,
                    const std::optional<std::string>& message,
-                   const std::optional<int>& severity) {
+                   const std::optional<int>& severity, int ttl_ms = 3000) {
+  std::lock_guard<std::mutex> guard(g_status_mutex);
   g_status.type = type;
   g_status.state = state.value_or("");
   g_status.description = description.value_or("");
   g_status.message = message.value_or("");
   g_status.severity = severity.value_or(0);
+  g_status.ttl_ms = ttl_ms;
   g_status.updated_ms = now_ms();
   g_status.has_data = true;
   g_status.has_error = compute_has_error(g_status);
@@ -127,13 +131,22 @@ void handle_status_message(const std::string& line) {
   }
 
   auto type = extract_string_field(line, "type");
+  if (type && *type == "indicator.runtime") {
+    update_leds_runtime(extract_string_field(line, "mode").value_or("air"),
+                       extract_bool_field(line, "operating").value_or(false),
+                       extract_bool_field(line, "activity").value_or(false),
+                       extract_bool_field(line, "recording").value_or(false),
+                       extract_int_field(line, "ttl_ms").value_or(7000));
+    return;
+  }
+  const int ttl_ms = extract_int_field(line, "ttl_ms").value_or(3000);
   auto state = extract_string_field(line, "state");
   auto description = extract_string_field(line, "description");
   auto message = extract_string_field(line, "message");
   auto severity = extract_int_field(line, "severity");
 
   if (type && *type == "indicator.set") {
-    update_status(*type, state, description, message, severity);
+    update_status(*type, state, description, message, severity, ttl_ms);
     std::string display;
     if (description) {
       display = *description;
@@ -151,11 +164,12 @@ void handle_status_message(const std::string& line) {
   }
 
   if (type && *type == "indicator.status") {
-    update_status(*type, state, description, message, severity);
+    update_status(*type, state, description, message, severity, ttl_ms);
     return;
   }
 
   if (type && *type == "indicator.clear") {
+    std::lock_guard<std::mutex> guard(g_status_mutex);
     g_status = StatusSnapshot{};
     g_status.type = *type;
     g_status.state = "CLEAR";
@@ -170,9 +184,9 @@ void handle_status_message(const std::string& line) {
 
   if (state || description || message || severity) {
     if (type) {
-      update_status(*type, state, description, message, severity);
+      update_status(*type, state, description, message, severity, ttl_ms);
     } else {
-      update_status("status.update", state, description, message, severity);
+      update_status("status.update", state, description, message, severity, ttl_ms);
     }
     std::string display;
     if (description) {
@@ -201,6 +215,7 @@ bool is_status_request(const std::string& line) {
 }
 
 std::string build_status_response() {
+  std::lock_guard<std::mutex> guard(g_status_mutex);
   std::ostringstream out;
   out << "{\"type\":\"sysutil.status.response\",\"has_data\":"
       << (g_status.has_data ? "true" : "false")

@@ -844,7 +844,7 @@ bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
   std::ofstream marker("/Video/external_video_part.txt");
   marker.close();
 
-  set_status("partitioning", "Complete", "Partition resize complete.");
+  set_status("partitioning.complete", "Complete", "Partition resize complete.");
   if (reboot) {
     (void)run_shell_command("reboot");
   }

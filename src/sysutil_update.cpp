@@ -185,7 +185,8 @@ void log_line(std::ofstream& log, const std::string& line) {
 void set_update_status(const std::string& step,
                        const std::string& message,
                        int severity = 0) {
-  set_status("updating", step, message, severity);
+  set_status(step == "Update complete" || step == "No update" ? "updating.complete" :
+             step == "Reboot" ? "reboot" : "updating", step, message, severity);
 }
 
 bool is_valid_package_name(const std::string& name) {

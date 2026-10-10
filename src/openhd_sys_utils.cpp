@@ -391,6 +391,7 @@ bool handleClientData(int fd, std::unordered_map<int, std::string>& buffers) {
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
+        if (arg == "--led-preview") return sysutil::preview_leds();
         if (arg == "-c") {
             if (!sysutil::remove_sysutil_config()) {
                 std::cerr << "Failed to remove sysutils config at "

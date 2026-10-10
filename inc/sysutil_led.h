@@ -30,6 +30,10 @@ namespace sysutil {
 
 // Discover available LEDs and start the LED worker.
 void init_leds();
+void shutdown_leds();
+int preview_leds();
+void update_leds_runtime(const std::string& mode, bool operating, bool activity,
+                         bool recording, int ttl_ms = 7000);
 // Update LED pattern from the latest status.
 void update_leds_from_status(const StatusSnapshot& status);
 

@@ -329,7 +329,8 @@ void report_service_status(const std::string& openhd_state,
         severity = 2;
     }
 
-    set_status("sysutils.services", "Service status", desc.str(), severity);
+    set_status(severity == 0 ? "sysutils.services.complete" : "sysutils.services",
+               "Service status", desc.str(), severity);
 }
 
 void stop_video_process() {

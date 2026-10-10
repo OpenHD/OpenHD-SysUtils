@@ -33,6 +33,7 @@ struct StatusSnapshot {
   bool has_data = false;
   bool has_error = false;
   int severity = 0;
+  int ttl_ms = 3000;
   std::string state;
   std::string description;
   std::string message;

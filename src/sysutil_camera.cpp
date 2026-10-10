@@ -314,7 +314,7 @@ bool apply_camera_config_if_needed() {
     applied = apply_rock_config(profile, prefix);
   }
   if (applied) {
-    set_status("camera_setup", "Camera settings applied",
+    set_status("camera_setup.complete", "Camera settings applied",
                "Camera configuration updated.");
   }
   return applied;

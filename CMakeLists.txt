@@ -72,6 +72,7 @@ add_executable(openhd_sys_utils
     src/sysutil_camera.cpp
     src/sysutil_hostname.cpp
     src/sysutil_led.cpp
+    src/sysutil_led_model.cpp
     src/sysutil_lte.cpp
     src/sysutil_protocol.cpp
     src/sysutil_platform.cpp
@@ -121,6 +122,12 @@ target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(test_led_controller tests/test_led_controller.cpp src/sysutil_led_model.cpp
+        src/sysutil_status.cpp src/sysutil_protocol.cpp)
+    add_dependencies(test_led_controller generate_platforms)
+    target_include_directories(test_led_controller PRIVATE inc ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(test_led_controller PRIVATE Threads::Threads)
+    add_test(NAME led_controller COMMAND test_led_controller)
     add_executable(test_devourer_usb_ownership
         tests/test_devourer_usb_ownership.cpp src/sysutil_devourer_usb.cpp)
     target_include_directories(test_devourer_usb_ownership PRIVATE inc)
@@ -135,6 +142,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
     CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     target_link_libraries(openhd_sys_utils PRIVATE stdc++fs)
     if(BUILD_TESTING)
+        target_link_libraries(test_led_controller PRIVATE stdc++fs)
         target_link_libraries(test_devourer_usb_ownership PRIVATE stdc++fs)
     endif()
 endif()
