@@ -236,7 +236,11 @@ std::string build_display_response() {
   if (load_sysutil_config(config) == ConfigLoadResult::Error)
     return "{\"type\":\"sysutil.display.response\",\"ok\":false}\n";
   std::ostringstream out;
+  const bool supported=std::filesystem::exists(kExtlinuxPath) ||
+      std::filesystem::exists("/boot/firmware/cmdline.txt") ||
+      std::filesystem::exists("/boot/cmdline.txt") || std::filesystem::exists(kGlideConfigPath);
   out << "{\"type\":\"sysutil.display.response\",\"ok\":true"
+      << ",\"supported\":" << (supported ? "true" : "false")
       << ",\"enabled\":" << (config.display_force_mode.value_or(false) ? "true" : "false")
       << ",\"width\":" << config.display_width.value_or(1920)
       << ",\"height\":" << config.display_height.value_or(1080)

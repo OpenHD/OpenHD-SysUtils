@@ -577,6 +577,8 @@ std::string build_settings_response() {
       << ",\"has_run_mode\":" << (has_run_mode ? "true" : "false")
       << ",\"run_mode\":\""
       << json_escape(has_run_mode ? run_mode : "ground") << "\""
+      << ",\"run_mode_choices\":" << (is_x20_platform() ? "[\"air\"]" :
+          kRecordModeEnabled ? "[\"air\",\"ground\",\"record\"]" : "[\"air\",\"ground\"]")
       << ",\"wifi_enable_autodetect\":"
       << (wifi_enable_autodetect ? "true" : "false")
       << ",\"wifi_wb_link_cards\":\"" << json_escape(wifi_wb_link_cards) << "\""
