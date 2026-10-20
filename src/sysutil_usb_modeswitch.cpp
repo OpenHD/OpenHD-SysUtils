@@ -76,6 +76,12 @@ bool switch_realtek_zerocd_wifi() {
   std::error_code ec;
   if (!fs::exists(kUsbRoot, ec)) return false;
   const char* binary = modeswitch_binary();
+  // Debian's dispatcher switches on udev events; standalone Yocto/ORQA
+  // installs only the executable. There is no competing attempt to wait for
+  // there: switch before OpenHD starts its initial radio discovery.
+  const bool has_udev_dispatcher =
+      ::access("/usr/sbin/usb_modeswitch_dispatcher", X_OK) == 0 ||
+      ::access("/sbin/usb_modeswitch_dispatcher", X_OK) == 0;
   static std::map<std::string, std::pair<int, std::chrono::steady_clock::time_point>> attempts;
   static std::map<std::string, std::chrono::steady_clock::time_point> first_seen;
   bool switched = false;
@@ -93,7 +99,7 @@ bool switch_realtek_zerocd_wifi() {
     const auto instance = port + ":" + bus + ":" + devnum;
     const auto now = std::chrono::steady_clock::now();
     const auto seen = first_seen.emplace(instance, now).first;
-    if (now - seen->second < kUdevGrace) continue;
+    if (has_udev_dispatcher && now - seen->second < kUdevGrace) continue;
     auto& attempt = attempts[instance];
     if (attempt.first >= kMaxAttemptsPerPort ||
         (attempt.first > 0 && now - attempt.second < kRetryInterval)) continue;
@@ -111,10 +117,12 @@ bool switch_realtek_zerocd_wifi() {
     for (int tick = 0; tick < 50; ++tick) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       const auto product = read_trimmed(device / "idProduct");
-      if (product != "1a2b") {
+      // Wait for re-enumeration, not just the temporary disappearance of the
+      // storage device, so the following discovery can see the radio.
+      if (!product.empty() && product != "1a2b") {
         std::cerr << "[sysutils][wifi] Realtek adapter at " << port
                   << " left ZeroCD mode; new USB product "
-                  << (product.empty() ? "pending" : product) << ".\n";
+                  << product << ".\n";
         switched = true;
         switched_this_device = true;
         break;

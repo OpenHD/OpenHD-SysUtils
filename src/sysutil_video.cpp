@@ -362,17 +362,23 @@ void stop_video_process() {
 
 bool start_video_process() {
     stop_video_process();
+    const char* pipeline =
+        platform_info().platform_type == X_PLATFORM_TYPE_RPI_5
+            ? kPi5GroundPipeline
+            : kLegacyRpiGroundPipeline;
+    // The legacy decoder deliberately exits on a resolution change. Keep its
+    // complete pipeline supervised so QOpenHD's still-live request does not
+    // leave video permanently stopped after that exit (or a GStreamer error).
+    const std::string supervised_pipeline =
+        std::string("while :; do ") + pipeline + "; sleep 1; done";
     const pid_t pid = ::fork();
     if (pid < 0) {
         return false;
     }
     if (pid == 0) {
         ::setsid();
-        const char* pipeline =
-            platform_info().platform_type == X_PLATFORM_TYPE_RPI_5
-                ? kPi5GroundPipeline
-                : kLegacyRpiGroundPipeline;
-        ::execl("/bin/sh", "sh", "-c", pipeline, static_cast<char*>(nullptr));
+        ::execl("/bin/sh", "sh", "-c", supervised_pipeline.c_str(),
+                static_cast<char*>(nullptr));
         _exit(127);
     }
     g_video_pid = pid;

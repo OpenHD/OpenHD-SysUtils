@@ -168,6 +168,12 @@ install(TARGETS openhd_sys_utils
     RUNTIME DESTINATION /usr/local/bin
 )
 
+configure_file(scripts/probe_orqa_cameras.py
+    ${CMAKE_CURRENT_BINARY_DIR}/openhd-orqa-camera-probe
+    @ONLY NEWLINE_STYLE UNIX)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/openhd-orqa-camera-probe
+    DESTINATION /usr/local/sbin)
+
 configure_file(sbin/openhd-silent-boot-setup
     ${CMAKE_CURRENT_BINARY_DIR}/openhd-silent-boot-setup
     @ONLY NEWLINE_STYLE UNIX)

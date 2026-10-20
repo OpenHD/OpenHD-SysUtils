@@ -24,7 +24,10 @@
 #include "sysutil_firstboot.h"
 
 #include <cstdlib>
+#include <cstdio>
 #include <filesystem>
+#include <iostream>
+#include <unistd.h>
 
 #include "platforms_generated.h"
 #include "sysutil_camera.h"
@@ -32,6 +35,7 @@
 #include "sysutil_display.h"
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
+#include "sysutil_protocol.h"
 #include "sysutil_settings.h"
 #include "sysutil_status.h"
 
@@ -40,6 +44,40 @@ namespace {
 
 constexpr int kOrqaRekindleCameraType = 124;
 constexpr const char* kOrqaRekindleResolution = "960x720@60";
+
+// First boot runs before OpenHD owns the capture nodes. Explicit camera
+// selections remain authoritative; an absent optional probe keeps the legacy
+// default. Bound runtime for the systemd socket-readiness deadline.
+void detect_orqa_cameras(SysutilConfig& config) {
+  if (config.camera_type.has_value() && config.camera2_type.has_value()) return;
+  if (::access("/usr/local/sbin/openhd-orqa-camera-probe", X_OK) != 0 ||
+      ::access("/usr/bin/timeout", X_OK) != 0) return;
+  FILE* pipe = ::popen(
+      "/usr/bin/timeout 20 /usr/local/sbin/openhd-orqa-camera-probe --sysutils-config", "r");
+  if (!pipe) return;
+  std::string output;
+  char buffer[512];
+  while (::fgets(buffer, sizeof(buffer), pipe)) {
+    if (output.size() < 4096) output += buffer;
+  }
+  if (::pclose(pipe) != 0) {
+    std::cerr << "[sysutils][camera] ORQA signal probe unavailable; keeping configured defaults.\n";
+    return;
+  }
+  const auto primary = extract_int_field(output, "camera_type");
+  const auto secondary = extract_int_field(output, "camera2_type");
+  if (!config.camera_type.has_value() && primary) {
+    config.camera_type = primary;
+    if (!config.camera_resolution_fps.has_value())
+      config.camera_resolution_fps = extract_string_field(output, "camera_resolution_fps");
+  }
+  if (!config.camera2_type.has_value() && secondary) {
+    config.camera2_type = secondary;
+    if (!config.camera2_resolution_fps.has_value())
+      config.camera2_resolution_fps = extract_string_field(output, "camera2_resolution_fps");
+  }
+  std::cerr << "[sysutils][camera] ORQA measured provisioning: " << output;
+}
 
 // Checks if a file exists without throwing.
 bool file_exists(const std::string& path) {
@@ -115,6 +153,7 @@ void run_firstboot_tasks() {
   }
   const auto info = discover_platform_info();
   if (info.platform_type == X_PLATFORM_TYPE_ORQA) {
+    detect_orqa_cameras(config);
     if (!config.camera_type.has_value()) {
       config.camera_type = kOrqaRekindleCameraType;
     }
