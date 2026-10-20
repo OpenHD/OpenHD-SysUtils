@@ -37,7 +37,7 @@ jobs:
             echo "::warning::IMAGEBUILDER_WORKFLOW_TOKEN is not configured; the component will publish normally but SysUtils-only changes cannot trigger ImageBuilder automatically."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -65,7 +65,7 @@ jobs:
         run: ./scripts/build_x21_component.sh "${X21_SDK_DIR}" "${GITHUB_WORKSPACE}/x21-component"
 
       - name: Upload SysUtils component artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openhd-sys-utils-x21b-component
           path: x21-component/
