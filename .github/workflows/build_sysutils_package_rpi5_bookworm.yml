@@ -18,10 +18,10 @@ jobs:
     env:
       CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build and package arm64 Bookworm
-        uses: pguyot/arm-runner-action@e1773de1ed6eb61848f5693de824d836f0b0ea25
+        uses: pguyot/arm-runner-action@45f370abd7eed1b20397277e5ec0cb0a31adb026
         with:
           base_image: https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2025-05-13/2025-05-13-raspios-bookworm-arm64-lite.img.xz
           cpu: cortex-a76
@@ -43,7 +43,7 @@ jobs:
             cp -v ./*.deb /opt/build_artifacts/
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openhd-sys-utils-rpi5-bookworm-arm64
           path: build_artifacts/*.deb

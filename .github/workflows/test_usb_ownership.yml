@@ -24,7 +24,7 @@ jobs:
       matrix:
         x20: ['ON', 'OFF']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build and test
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
