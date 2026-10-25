@@ -206,8 +206,12 @@ bool has_systemctl() {
 
 void apply_openhd_service_disable() {
     if (!has_systemctl()) {
-        set_status("sysutils.services", "Service status",
-                   "systemctl missing; cannot disable OpenHD service", 2);
+        if (access("/etc/init.d/S99openhd", X_OK) == 0) {
+            const bool ok = run_cmd("/etc/init.d/S99openhd stop");
+            set_status("sysutils.services", "Service status",
+                       ok ? "OpenHD disabled via sysutils config" : "Failed to stop OpenHD",
+                       ok ? 1 : 2);
+        }
         return;
     }
     run_cmd("systemctl stop openhd.service openhd_rpi.service openhd_mod.service");
@@ -610,8 +614,18 @@ void start_openhd_services_if_needed() {
     }
 
     if (!systemd_ok) {
+        if (access("/etc/init.d/S99openhd", X_OK) != 0) {
+            set_status("sysutils.services", "Service status",
+                       "No supported OpenHD service launcher found", 2);
+            return;
+        }
+        // BusyBox init has no unit dependencies. SysUtils owns OpenHD startup
+        // after hardware detection and socket creation. The script backgrounds
+        // OpenHD so it cannot block this daemon's request loop.
+        const bool ok = run_cmd("OPENHD_SYSUTILS_START=1 /etc/init.d/S99openhd start");
         set_status("sysutils.services", "Service status",
-                   "systemctl missing; cannot manage services", 2);
+                   ok ? "OpenHD started by SysUtils (BusyBox init)" : "OpenHD startup failed",
+                   ok ? 0 : 2);
         return;
     }
 

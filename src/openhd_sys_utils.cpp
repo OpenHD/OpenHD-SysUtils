@@ -447,7 +447,6 @@ int main(int argc, char* argv[]) {
     sysutil::init_debug_info();
     gDebug = gDebug || sysutil::debug_enabled();
     sysutil::apply_hostname_if_enabled();
-    sysutil::start_openhd_services_if_needed();
     sysutil::start_ground_video_if_needed();
     bool wifi_retry_active = !sysutil::has_openhd_wifibroadcast_cards();
     std::size_t wifi_retry_attempt = 0;
@@ -473,6 +472,8 @@ int main(int argc, char* argv[]) {
         sysutil::shutdown_update_worker();
         return 1;
     }
+
+    sysutil::start_openhd_services_if_needed();
 
     std::unordered_map<int, std::string> clientBuffers;
     std::vector<pollfd> pollFds;
