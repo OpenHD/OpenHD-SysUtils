@@ -5,7 +5,19 @@
 #include <iostream>
 #include <unistd.h>
 namespace fs = std::filesystem;
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[1]) == "--apply") {
+        std::ifstream input(argv[2], std::ios::binary);
+        std::string capsule(16, '\0'), error;
+        if (!input.read(&capsule[0], 16)) return 1;
+        const auto length = openhd_provisioning::get32(capsule.data() + 8);
+        if (length < 4 || length > openhd_provisioning::max_size - 16) return 1;
+        capsule.resize(length + 16);
+        if (!input.read(&capsule[16], length)) return 1;
+        const bool ok = sysutil::apply_provisioning(capsule, argv[3], error);
+        if (!ok) std::cerr << error << '\n';
+        return ok ? 0 : 1;
+    }
     auto root = fs::temp_directory_path() / ("ohd-provisioning-" + std::to_string(getpid()));
     fs::create_directories(root / "config");
     const auto config = root / "config";
