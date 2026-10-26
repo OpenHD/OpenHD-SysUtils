@@ -29,6 +29,7 @@
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
 #include "sysutil_settings.h"
+#include "sysutil_provisioning.h"
 #include "sysutil_status.h"
 #include "sysutil_update.h"
 #include "sysutil_serial.h"
@@ -433,6 +434,10 @@ int main(int argc, char* argv[]) {
     sysutil::start_openhd_glide_early_if_needed();
     sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
+    if (!sysutil::import_ubi_provisioning()) {
+        std::cerr << "Failed to import ImageWriter configuration; services were not started." << std::endl;
+        return 1;
+    }
     sysutil::sync_settings_from_files();
     const auto lte = sysutil::initialize_lte_link();
     if (lte.configured && !lte.active) {

@@ -78,6 +78,7 @@ add_executable(openhd_sys_utils
     src/sysutil_platform.cpp
     src/sysutil_serial.cpp
     src/sysutil_settings.cpp
+    src/sysutil_provisioning.cpp
     src/sysutil_status.cpp
     src/sysutil_storage.cpp
     src/sysutil_update.cpp
@@ -122,6 +123,9 @@ target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(test_provisioning tests/test_provisioning.cpp src/sysutil_provisioning.cpp)
+    target_include_directories(test_provisioning PRIVATE inc)
+    add_test(NAME provisioning COMMAND test_provisioning)
     add_executable(test_led_controller tests/test_led_controller.cpp src/sysutil_led_model.cpp
         src/sysutil_status.cpp src/sysutil_protocol.cpp)
     add_dependencies(test_led_controller generate_platforms)
