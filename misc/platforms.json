@@ -159,10 +159,10 @@
     },
     {
       "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W",
-      "log": "Detected Rockchip RK3566 (Radxa ROCK3 Model A).",
+      "log": "Detected Rockchip RK3568 (Radxa ROCK 3 family).",
       "conditions": [
-        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3566"},
-        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa ROCK3 Model A"], "case_insensitive": true}
+        {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3568"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/model", "values": ["Radxa ROCK3", "Radxa ROCK 3"], "case_insensitive": true}
       ]
     },
     {

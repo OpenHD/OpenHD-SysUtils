@@ -171,6 +171,13 @@ bool is_rk3566_platform() {
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3;
 }
 
+bool uses_native_rockchip_video() {
+    // Installed only by the full-image native display configuration. Lite
+    // images retain their existing Glide/decoder selection without this marker.
+    return is_rockchip_platform() &&
+           std::filesystem::exists("/etc/qopenhd-rockchip/native-video-enabled");
+}
+
 bool is_radxa_cm5_platform() {
     return platform_info().platform_type ==
            X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5;
@@ -193,6 +200,9 @@ bool cm5_qopenhd_override_requested() {
 }
 
 bool should_use_openhd_glide() {
+    if (uses_native_rockchip_video()) {
+        return false;
+    }
     if (is_radxa_cm5_platform()) {
         return !cm5_qopenhd_override_requested();
     }
@@ -393,6 +403,10 @@ bool control_video_service(const std::string& action) {
     if (!has_systemctl()) {
         return false;
     }
+    if (uses_native_rockchip_video()) {
+        if (action != "start" && action != "restart" && action != "stop") return false;
+        return run_cmd("systemctl " + action + " qopenhd.service");
+    }
     if (should_use_openhd_glide()) {
         if (action == "start") {
             return run_cmd("systemctl start openhd-glide.service");
@@ -442,6 +456,20 @@ void start_qopenhd_if_needed() {
 bool generate_decode_scripts_and_services() {
     const auto& info = platform_info();
     int type = info.platform_type;
+
+    if (uses_native_rockchip_video()) {
+        if (!has_systemctl()) return false;
+        // Native QOpenHD owns both decode and display. Never regenerate fpvue
+        // or give a second process the same DRM master/UDP video port.
+        for (const char* unit : {"openhd-video.service", "openhd-glide.service",
+                                 "openhd-glide-autostart.service", "openhd-glide-stream.service"}) {
+            // A missing optional unit must not prevent stopping an existing
+            // legacy decoder in the same transition.
+            run_cmd(std::string("systemctl stop ") + unit + " >/dev/null 2>&1");
+            run_cmd(std::string("systemctl disable ") + unit + " >/dev/null 2>&1");
+        }
+        return true;
+    }
 
     if (should_use_openhd_glide()) {
         if (!has_systemctl()) {
@@ -537,6 +565,13 @@ bool generate_decode_scripts_and_services() {
 
 void start_ground_video_if_needed() {
     if (!is_ground_mode()) {
+        return;
+    }
+    if (uses_native_rockchip_video()) {
+        if (generate_decode_scripts_and_services()) start_qopenhd_if_needed();
+        report_service_status(unit_state("openhd.service"), unit_state("qopenhd.service"),
+                              unit_state("getty@tty1.service"),
+                              unit_state("qopenhd-rockchip-compositor.service"), true, true);
         return;
     }
     if (is_rockchip_platform()) {
@@ -636,7 +671,14 @@ void start_openhd_services_if_needed() {
     // Merely report its state here; systemd starts it after this unit.
 
     if (ground && !should_use_openhd_glide()) {
+        if (uses_native_rockchip_video() && !generate_decode_scripts_and_services()) {
+            set_status("sysutils.services", "Service status", "Native Rockchip display setup failed", 2);
+            return;
+        }
         start_qopenhd_if_needed();
+    } else if (!ground && uses_native_rockchip_video()) {
+        run_cmd("systemctl stop qopenhd.service qopenhd-rockchip-compositor.service "
+                "openhd-rockchip-boot-splash.service");
     }
 
     const std::string openhd_state = unit_state("openhd.service");
@@ -671,7 +713,8 @@ std::string handle_video_request(const std::string& line) {
             ok = false;
         }
     } else if (is_rockchip_platform()) {
-        pipeline = should_use_openhd_glide() ? "openhd_glide" : "systemd";
+        pipeline = uses_native_rockchip_video() ? "rockchip_native" :
+                   should_use_openhd_glide() ? "openhd_glide" : "systemd";
         if (action == "start" || action == "restart") {
             if (!generate_decode_scripts_and_services()) {
                 ok = false;
