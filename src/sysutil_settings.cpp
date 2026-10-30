@@ -644,6 +644,25 @@ std::string handle_settings_update(const std::string& line) {
     return "{\"type\":\"sysutil.settings.update.response\",\"ok\":false}\n";
   }
 
+  // Explicit, acknowledged reset. Preserve board identity, boot infrastructure
+  // and the selected unit role; all user configuration returns to defaults.
+  if (extract_bool_field(line, "reset_defaults").value_or(false)) {
+    SysutilConfig defaults;
+    defaults.platform_type = config.platform_type;
+    defaults.platform_name = config.platform_name;
+    const auto role = extract_string_field(line, "run_mode");
+    if (role && *role != "air" && *role != "ground")
+      return "{\"type\":\"sysutil.settings.update.response\",\"ok\":false}\n";
+    defaults.run_mode = role ? role : config.run_mode;
+    defaults.init_system = config.init_system;
+    defaults.shell = config.shell;
+    defaults.firstboot = false;
+    defaults.reset_requested = true;
+    const bool ok = write_sysutil_config(defaults);
+    return std::string("{\"type\":\"sysutil.settings.update.response\",\"reset_defaults_applied\":") +
+        (ok ? "true" : "false") + ",\"ok\":" + (ok ? "true" : "false") + "}\n";
+  }
+
   bool changed = false;
   bool hostname_related_change = false;
   bool debug_changed = false;
