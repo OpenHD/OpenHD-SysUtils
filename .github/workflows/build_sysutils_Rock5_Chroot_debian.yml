@@ -42,6 +42,8 @@ jobs:
           cmake -S . -B build/package -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
             -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_CXX_COMPILER="$compiler" -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=arm64
+          # Keep Debian version ordering above the timestamped packages already published.
+          export OPENHD_BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"
           cmake --build build/package --parallel 4
           (cd build/package && cpack -G DEB)
           build/toolchain/bin/aarch64-buildroot-linux-gnu-readelf -h build/package/openhd_sys_utils | grep 'Machine:.*AArch64'
