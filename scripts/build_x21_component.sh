@@ -34,6 +34,11 @@ mkdir -p "${stage_dir}/usr/bin"
 install -m 0755 "${build_dir}/openhd_sys_utils" \
   "${stage_dir}/usr/bin/openhd_sys_utils"
 "${STRIP}" "${stage_dir}/usr/bin/openhd_sys_utils"
+install -D -m 0755 "${build_dir}/openhd-usb-power-recover" \
+  "${stage_dir}/usr/sbin/openhd-usb-power-recover"
+"${STRIP}" "${stage_dir}/usr/sbin/openhd-usb-power-recover"
+bash "${repo_root}/scripts/build_usb_modeswitch.sh" \
+  "${stage_dir}/usr/sbin/usb_modeswitch"
 
 component_version="$(sed -nE 's/^project\(openhd_sys_utils VERSION ([^ ]+).*/\1/p' "${repo_root}/CMakeLists.txt")"
 test -n "${component_version}"

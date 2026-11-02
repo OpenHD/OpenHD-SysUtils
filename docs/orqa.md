@@ -19,6 +19,11 @@ CI deploy archive includes it under `usr/sbin`, together with the camera probe.
 The image assembler copies that tree into the root filesystem. USB_ModeSwitch's
 Tcl dispatcher is unnecessary for SysUtils' direct executable invocation.
 
+Deploy `usr/local/sbin/openhd-usb-power-recover` as well. It supplies the bounded
+hub-power fallback for adapters that remain in ZeroCD mode after eject retries;
+see [Realtek USB recovery](realtek-usb-recovery.md). It uses the Linux USB hub
+control API and has no additional libusb or uhubctl dependency.
+
 ## Camera signal detection
 
 The tested SDK registers two `orqa,dummy-csi2-sensor` platform devices, without

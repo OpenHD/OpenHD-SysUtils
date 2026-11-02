@@ -1916,6 +1916,15 @@ void refresh_wifi_info_impl() {
       detect_devourer_usb_cards(overrides, tx_overrides, profiles);
   g_wifi_cards.insert(g_wifi_cards.end(), devourer_cards.begin(),
                       devourer_cards.end());
+  const bool have_broadcast_card = std::any_of(g_wifi_cards.begin(), g_wifi_cards.end(),
+      [](const WifiCardInfo& card) {
+        return !card.disabled && is_openhd_wifibroadcast_type(card.effective_type);
+      });
+  if (!have_broadcast_card && switch_realtek_zerocd_wifi(true)) {
+    g_wifi_cards = detect_wifi_cards(overrides, tx_overrides, profiles);
+    devourer_cards = detect_devourer_usb_cards(overrides, tx_overrides, profiles);
+    g_wifi_cards.insert(g_wifi_cards.end(), devourer_cards.begin(), devourer_cards.end());
+  }
   auto artosyn_cards = detect_artosyn_cards();
   if (!artosyn_cards.empty()) {
     log_wifi("Detected " + std::to_string(artosyn_cards.size()) +

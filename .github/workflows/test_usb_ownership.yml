@@ -6,6 +6,11 @@ on:
       - CMakeLists.txt
       - inc/sysutil_devourer_usb.h
       - src/sysutil_devourer_usb.cpp
+      - inc/sysutil_usb_power.h
+      - src/sysutil_usb_power.cpp
+      - inc/sysutil_usb_modeswitch.h
+      - src/sysutil_usb_modeswitch.cpp
+      - tools/usb_power_recover.cpp
       - src/openhd_sys_utils.cpp
       - tests/**
       - misc/openhd-devourer-eu.conf
@@ -34,6 +39,7 @@ jobs:
       - name: Check packaged ownership policy
         run: |
           DESTDIR="$RUNNER_TEMP/stage" cmake --install build
+          test -x "$RUNNER_TEMP/stage/usr/local/sbin/openhd-usb-power-recover"
           for policy in lib/modprobe.d/openhd-devourer-eu.conf lib/udev/rules.d/70-openhd-devourer-eu.rules; do
             test -f "$RUNNER_TEMP/stage/$policy"
           done

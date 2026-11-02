@@ -86,6 +86,7 @@ add_executable(openhd_sys_utils
     src/sysutil_video.cpp
     src/sysutil_wifi.cpp
     src/sysutil_usb_modeswitch.cpp
+    src/sysutil_usb_power.cpp
     src/sysutil_devourer_usb.cpp
     ${GENERATED_PLATFORMS_HEADER}
 )
@@ -120,6 +121,12 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(openhd_sys_utils PRIVATE Threads::Threads)
+add_executable(openhd_usb_power_recover tools/usb_power_recover.cpp src/sysutil_usb_power.cpp)
+target_include_directories(openhd_usb_power_recover PRIVATE inc)
+target_link_libraries(openhd_usb_power_recover PRIVATE Threads::Threads)
+set_target_properties(openhd_usb_power_recover PROPERTIES OUTPUT_NAME openhd-usb-power-recover)
+add_dependencies(openhd_sys_utils openhd_usb_power_recover)
+install(TARGETS openhd_usb_power_recover RUNTIME DESTINATION /usr/local/sbin)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -140,14 +147,20 @@ if(BUILD_TESTING)
             OPENHD_DEVOURER_RTL8812EU=1)
     endif()
     add_test(NAME devourer_usb_ownership COMMAND test_devourer_usb_ownership)
+    add_executable(test_usb_power tests/test_usb_power.cpp src/sysutil_usb_power.cpp)
+    target_include_directories(test_usb_power PRIVATE inc)
+    target_link_libraries(test_usb_power PRIVATE Threads::Threads)
+    add_test(NAME usb_power_recovery COMMAND test_usb_power)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
     CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     target_link_libraries(openhd_sys_utils PRIVATE stdc++fs)
+    target_link_libraries(openhd_usb_power_recover PRIVATE stdc++fs)
     if(BUILD_TESTING)
         target_link_libraries(test_led_controller PRIVATE stdc++fs)
         target_link_libraries(test_devourer_usb_ownership PRIVATE stdc++fs)
+        target_link_libraries(test_usb_power PRIVATE stdc++fs)
     endif()
 endif()
 

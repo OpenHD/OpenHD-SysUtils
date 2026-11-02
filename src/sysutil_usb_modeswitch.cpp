@@ -1,4 +1,5 @@
 #include "sysutil_usb_modeswitch.h"
+#include "sysutil_usb_power.h"
 
 #include <chrono>
 #include <filesystem>
@@ -70,9 +71,19 @@ bool run_eject(const char* binary, const std::string& bus,
   return false;
 }
 
+bool recover_and_wait(const fs::path& device, const std::string& port) {
+  if (!recover_zerocd_usb_power(port)) return false;
+  for (int tick=0;tick<80;++tick) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const auto product=read_trimmed(device/"idProduct");
+    if (!product.empty() && product!="1a2b") return true;
+  }
+  return false;
+}
+
 }  // namespace
 
-bool switch_realtek_zerocd_wifi() {
+bool switch_realtek_zerocd_wifi(bool allow_power_recovery) {
   std::error_code ec;
   if (!fs::exists(kUsbRoot, ec)) return false;
   const char* binary = modeswitch_binary();
@@ -101,8 +112,11 @@ bool switch_realtek_zerocd_wifi() {
     const auto seen = first_seen.emplace(instance, now).first;
     if (has_udev_dispatcher && now - seen->second < kUdevGrace) continue;
     auto& attempt = attempts[instance];
-    if (attempt.first >= kMaxAttemptsPerPort ||
-        (attempt.first > 0 && now - attempt.second < kRetryInterval)) continue;
+    if (attempt.first >= kMaxAttemptsPerPort) {
+      if (allow_power_recovery && recover_and_wait(device,port)) switched=true;
+      continue;
+    }
+    if (attempt.first > 0 && now - attempt.second < kRetryInterval) continue;
     if (!binary) {
       std::cerr << "[sysutils][wifi] 0bda:1a2b ZeroCD adapter at " << port
                 << " needs usb_modeswitch, but the executable is missing.\n";
@@ -132,6 +146,11 @@ bool switch_realtek_zerocd_wifi() {
       std::cerr << "[sysutils][wifi] ZeroCD mode persists at " << port
                 << " after usb_modeswitch" << (command_ok ? "" : " (command failed)")
                 << ".\n";
+      if (allow_power_recovery && attempt.first == kMaxAttemptsPerPort) {
+        // Udev gets the same opportunity as a physical replug. Re-discovery
+        // must use this physical port: the device number changes on reset.
+        if (recover_and_wait(device,port)) switched=true;
+      }
     }
   }
   return switched;
