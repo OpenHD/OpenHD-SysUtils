@@ -79,6 +79,7 @@ add_executable(openhd_sys_utils
     src/sysutil_serial.cpp
     src/sysutil_settings.cpp
     src/sysutil_provisioning.cpp
+    src/sysutil_pico_usb.cpp
     src/sysutil_status.cpp
     src/sysutil_storage.cpp
     src/sysutil_update.cpp

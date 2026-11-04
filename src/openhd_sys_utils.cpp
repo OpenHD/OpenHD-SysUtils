@@ -30,6 +30,7 @@
 #include "sysutil_protocol.h"
 #include "sysutil_settings.h"
 #include "sysutil_provisioning.h"
+#include "sysutil_pico_usb.h"
 #include "sysutil_status.h"
 #include "sysutil_update.h"
 #include "sysutil_serial.h"
@@ -439,6 +440,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     sysutil::sync_settings_from_files();
+    if (!sysutil::configure_pico_usb()) return 1;
     const auto lte = sysutil::initialize_lte_link();
     if (lte.configured && !lte.active) {
         std::cerr << "[sysutils][lte] WireGuard profile is valid but activation failed." << std::endl;

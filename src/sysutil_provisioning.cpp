@@ -103,8 +103,9 @@ bool sysutil::import_ubi_provisioning() {
             read_text(entry.path() / "name") != "openhd-provision") continue;
         const auto device = name.substr(0, separator);
         const auto mtd = read_text(fs::path("/sys/class/ubi") / device / "mtd_num");
+        const auto partition = read_text(fs::path("/sys/class/mtd") / ("mtd" + mtd) / "name");
         if (mtd.empty() || mtd.find_first_not_of("0123456789") != std::string::npos ||
-            read_text(fs::path("/sys/class/mtd") / ("mtd" + mtd) / "name") != "ohd" ||
+            (partition != "ohd" && partition != "rootfs") ||
             read_text(entry.path() / "type") != "static") continue;
         if (!selected.empty()) { std::cerr << "[provisioning] Multiple OHD provisioning volumes\n"; return false; }
         selected = fs::path("/dev") / name;
