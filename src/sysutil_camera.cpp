@@ -210,6 +210,28 @@ bool apply_rpi_config(const CameraProfile& profile, int cam_id, bool is_rpi4) {
   if (!profile.rpi_link) {
     return false;
   }
+  if (cam_id == 64) {
+    const auto boot = std::filesystem::path(select_boot_config_path()).parent_path();
+    const auto destination = boot / "overlays/veye_gxcam.dtbo";
+    if (!read_file_exists(destination.string())) {
+      bool restored = false;
+      std::error_code error;
+      std::filesystem::create_directories(destination.parent_path(), error);
+      if (error) return false;
+      for (const auto* source : {
+               "/usr/share/openhd/overlays/veye_gxcam.dtbo",
+               "/usr/local/share/openhd/kernel/overlays/veye_gxcam.dtbo"}) {
+        if (copy_file_if_exists(source, destination.string())) {
+          restored = true;
+          break;
+        }
+      }
+      if (!restored) {
+        std::cerr << "VEYE GX boot overlay missing; install openhd-veye-gx or a complete OpenHD kernel package\n";
+        return false;
+      }
+    }
+  }
   apply_rpi_tuning(cam_id);
   const std::string cma = profile.rpi_cma ? ",cma=400M" : "";
   std::string dtoverlay_line;
