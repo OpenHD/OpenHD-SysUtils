@@ -26,6 +26,7 @@
 #include "sysutil_status.h"
 #include "sysutil_config.h"
 #include "sysutil_storage.h"
+#include "sysutil_startup_hold.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -587,6 +588,13 @@ bool resize_partition() {
 }
 
 bool resize_partition_firstboot() {
+  // Full ORQA images already contain a formatted recordings filesystem which
+  // systemd mounts before SysUtils. Never attempt to format that live volume.
+  if (is_mountpoint("/Video") || is_mountpoint("/Videos")) {
+    set_status("partitioning", "Already mounted",
+               "Preserving the existing mounted recordings filesystem.");
+    return false;
+  }
   set_status("partitioning", "Checking", "Evaluating partition resize.");
   const auto candidate = find_resize_candidate(read_lsblk_rows());
   if (!candidate) {
@@ -803,8 +811,11 @@ bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
 
   std::error_code ec;
   std::filesystem::create_directories("/run/openhd", ec);
-  std::ofstream hold("/run/openhd/hold.pid");
-  hold.close();
+  ScopedStartupHold hold("/run/openhd/hold.pid");
+  if (!hold.acquired()) {
+    set_status("partitioning", "Busy", "Another operation is holding OpenHD startup.");
+    return false;
+  }
 
   set_status("partitioning", "Formatting", "Preparing FAT32 filesystem.");
   if (!run_shell_command("mkfs.fat -F 32 " + partition_device)) {
