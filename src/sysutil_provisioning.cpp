@@ -92,6 +92,20 @@ bool sysutil::apply_provisioning(const std::string& capsule, const fs::path& con
     return true;
 }
 
+bool sysutil::import_provisioning_capsule(const std::string& capsule, const fs::path& config) {
+    std::vector<openhd_provisioning::File> files;
+    if (!openhd_provisioning::decode(capsule, files)) {
+        std::cerr << "[provisioning] Ignoring damaged ImageWriter selections; keeping factory/persisted settings\n";
+        return true;
+    }
+    std::string error;
+    if (!apply_provisioning(capsule, config, error)) {
+        std::cerr << "[provisioning] " << error << '\n';
+        return false;
+    }
+    return true;
+}
+
 bool sysutil::import_ubi_provisioning() {
     std::error_code ec;
     if (!fs::is_directory("/sys/class/ubi", ec)) return true;
@@ -113,14 +127,11 @@ bool sysutil::import_ubi_provisioning() {
     if (selected.empty()) return true;
     std::ifstream input(selected, std::ios::binary);
     std::string capsule(16, '\0');
-    if (!input.read(&capsule[0], 16)) return false;
+    if (!input.read(&capsule[0], 16)) return import_provisioning_capsule("", "/Config");
     const auto size = openhd_provisioning::get32(capsule.data() + 8);
-    if (size < 4 || size > openhd_provisioning::max_size - 16) return false;
+    if (size < 4 || size > openhd_provisioning::max_size - 16)
+        return import_provisioning_capsule("", "/Config");
     capsule.resize(16 + size);
-    if (!input.read(&capsule[16], size)) return false;
-    std::string error;
-    if (!apply_provisioning(capsule, "/Config", error)) {
-        std::cerr << "[provisioning] " << error << '\n'; return false;
-    }
-    return true;
+    if (!input.read(&capsule[16], size)) return import_provisioning_capsule("", "/Config");
+    return import_provisioning_capsule(capsule, "/Config");
 }

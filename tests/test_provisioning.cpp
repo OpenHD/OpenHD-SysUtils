@@ -32,6 +32,18 @@ int main(int argc, char** argv) {
     ok &= sysutil::apply_provisioning(capsule, config, error) && !fs::exists(config / "openhd/settings.json");
     auto corrupted = capsule; corrupted.back() ^= 1;
     ok &= !sysutil::apply_provisioning(corrupted, config, error);
+    // Optional ImageWriter data may be absent, truncated or have a bad CRC.
+    // Startup continues, without changing any existing files or role markers.
+    fs::remove(config / ".imagewriter-provisioned");
+    std::ofstream(config / "openhd/air.txt");
+    for (const auto& damaged : {std::string(), capsule.substr(0, 10), corrupted}) {
+        ok &= sysutil::import_provisioning_capsule(damaged, config);
+        ok &= fs::exists(config / "openhd/air.txt");
+        ok &= !fs::exists(config / ".imagewriter-provisioned");
+        ok &= !fs::exists(config / "openhd/settings.json");
+    }
+    ok &= sysutil::import_provisioning_capsule(capsule, config);
+    ok &= !fs::exists(config / "openhd/air.txt") && fs::exists(config / "openhd/ground.txt");
     ok &= openhd_provisioning::encode({{"../escape", "x"}}).empty();
     ok &= openhd_provisioning::encode({{"openhd/maps/../escape", "x"}}).empty();
     fs::remove(config / ".imagewriter-provisioned");

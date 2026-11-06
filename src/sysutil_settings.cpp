@@ -43,6 +43,7 @@
 #include "sysutil_hostname.h"
 #include "sysutil_lte.h"
 #include "sysutil_platform.h"
+#include "sysutil_pico_defaults.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
 #include "platforms_generated.h"
@@ -430,6 +431,10 @@ void sync_settings_from_files() {
   if (is_x20_platform() && config.run_mode.value_or("") != "air") {
     config.run_mode = "air";
     changed = true;
+  }
+
+  if (platform_info().platform_type == X_PLATFORM_TYPE_LUCKFOX_RV110X) {
+    changed = apply_pico_defaults(config) || changed;
   }
 
   if (changed) {

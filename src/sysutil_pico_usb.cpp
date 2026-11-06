@@ -1,5 +1,6 @@
 #include "sysutil_pico_usb.h"
 #include "sysutil_config.h"
+#include "sysutil_pico_defaults.h"
 #include "sysutil_devourer_usb.h"
 #include <cstdlib>
 #include <iostream>
@@ -9,6 +10,7 @@ bool sysutil::configure_pico_usb() {
     if (::access("/usr/sbin/openhd-pico-usb-role", X_OK) != 0) return true;
     SysutilConfig config;
     if (load_sysutil_config(config) == ConfigLoadResult::Error) return false;
+    if (apply_pico_defaults(config) && !write_sysutil_config(config)) return false;
     const bool ethernet = !config.disable_ethernet_link.value_or(true);
     if (ethernet) {
         config.nw_ethernet_card = "usb0";
