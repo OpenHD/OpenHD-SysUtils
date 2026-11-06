@@ -14,8 +14,8 @@ bool sysutil::configure_pico_usb() {
     const bool ethernet = !config.disable_ethernet_link.value_or(true);
     if (ethernet) {
         config.nw_ethernet_card = "usb0";
-        if (config.ground_unit_ip.value_or("").empty()) config.ground_unit_ip = "172.32.0.1";
-        if (config.air_unit_ip.value_or("").empty()) config.air_unit_ip = "172.32.0.70";
+        if (config.ground_unit_ip.value_or("").empty()) config.ground_unit_ip = "192.168.3.2";
+        if (config.air_unit_ip.value_or("").empty()) config.air_unit_ip = "192.168.3.1";
         if (config.nw_manual_forwarding_ips.value_or("").empty())
             config.nw_manual_forwarding_ips = config.ground_unit_ip;
         if (!write_sysutil_config(config)) return false;
