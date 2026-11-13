@@ -286,14 +286,25 @@ bool apply_rock_config(const CameraProfile& profile,
   if (!profile.rock_ident) {
     return false;
   }
+  const std::string overlay_path =
+      "/boot/dtbo/" + board_prefix + profile.rock_ident + ".dtbo";
+  const std::string overlay_disabled = overlay_path + ".disabled";
+  if (board_prefix == "radxa-zero3-" && profile.id == 93) {
+    // The standard Zero 3W image stages the overlay until IMX708 is selected.
+    // Radxa's generator discovers enabled overlays in /boot/dtbo.
+    if (read_file_exists(overlay_disabled)
+            ? !copy_file_if_exists(overlay_disabled, overlay_path)
+            : !read_file_exists(overlay_path)) {
+      std::cerr << "Unable to enable IMX708 overlay: " << overlay_path << '\n';
+      return false;
+    }
+    return run_command("u-boot-update");
+  }
   const std::string overlay_line =
       "        fdtoverlays  " + board_prefix + profile.rock_ident + ".dtbo";
   if (!update_extlinux(overlay_line)) {
     return false;
   }
-  const std::string overlay_path =
-      "/boot/dtbo/" + board_prefix + profile.rock_ident + ".dtbo";
-  const std::string overlay_disabled = overlay_path + ".disabled";
   copy_file_if_exists(overlay_disabled, overlay_path);
   run_command("u-boot-update");
   return true;
