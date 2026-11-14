@@ -85,6 +85,7 @@ const std::vector<CameraProfile> kProfiles = {
     {94, nullptr, nullptr, false, "arducam-pivariety-imx462"},
     {95, nullptr, nullptr, false, "arducam-pivariety-imx519"},
     {96, nullptr, nullptr, false, "ohd-jaguar"},
+    {98, nullptr, nullptr, false, "imx462-pivariety"},
 };
 
 std::optional<CameraProfile> find_profile(int id) {
@@ -335,7 +336,7 @@ bool apply_zero3w_camera(const CameraProfile& profile) {
   };
 
   for (const auto& candidate : kProfiles) {
-    if (candidate.id < 90 || candidate.id > 96 || !candidate.rock_ident) continue;
+    if (candidate.id < 90 || candidate.id > 98 || !candidate.rock_ident) continue;
     const std::string path = prefix + candidate.rock_ident + ".dtbo";
     if (path == selected || !read_file_exists(path)) continue;
     std::error_code ec;
@@ -402,7 +403,8 @@ bool apply_camera_config_if_needed() {
     applied = apply_rpi_config(profile, config.camera_type.value(), false);
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
     applied = apply_zero3w_camera(profile);
-  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 &&
+             profile.id != 98) {
     applied = apply_rock_config(profile, "radxa-zero3-");
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
