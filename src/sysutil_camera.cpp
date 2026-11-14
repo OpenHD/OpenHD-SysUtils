@@ -310,6 +310,72 @@ bool apply_rock_config(const CameraProfile& profile,
   return true;
 }
 
+bool apply_zero3w_camera(const CameraProfile& profile) {
+  namespace fs = std::filesystem;
+  if (!profile.rock_ident) return false;
+  const std::string prefix = "/boot/dtbo/radxa-zero3-";
+  const std::string selected = prefix + profile.rock_ident + ".dtbo";
+  const std::string staged = selected + ".disabled";
+  const bool already_enabled = read_file_exists(selected);
+  if (!already_enabled && !read_file_exists(staged)) {
+    std::cerr << "Missing Zero 3W camera overlay: " << staged << '\n';
+    return false;
+  }
+
+  std::vector<std::string> disabled;
+  bool enabled_selected = false;
+  const auto restore = [&] {
+    std::error_code ec;
+    if (enabled_selected) fs::remove(selected, ec);
+    for (const auto& path : disabled) {
+      fs::rename(path + ".openhd-switch", path, ec);
+      if (ec) std::cerr << "Unable to restore camera overlay: " << path << '\n';
+    }
+    (void)run_command("u-boot-update");
+  };
+
+  for (const auto& candidate : kProfiles) {
+    if (candidate.id < 90 || candidate.id > 96 || !candidate.rock_ident) continue;
+    const std::string path = prefix + candidate.rock_ident + ".dtbo";
+    if (path == selected || !read_file_exists(path)) continue;
+    std::error_code ec;
+    // Keep an exact copy until the boot configuration has been regenerated.
+    if (read_file_exists(path + ".openhd-switch")) {
+      restore();
+      return false;
+    }
+    fs::rename(path, path + ".openhd-switch", ec);
+    if (ec) {
+      restore();
+      return false;
+    }
+    disabled.push_back(path);
+  }
+  if (!already_enabled) {
+    if (!copy_file_if_exists(staged, selected)) {
+      std::error_code ec;
+      fs::remove(selected, ec);
+      restore();
+      return false;
+    }
+    enabled_selected = true;
+  }
+  if (!run_command("u-boot-update")) {
+    restore();
+    return false;
+  }
+  for (const auto& path : disabled) {
+    std::error_code ec;
+    if (read_file_exists(path + ".disabled")) {
+      fs::remove(path + ".openhd-switch", ec);
+    } else {
+      fs::rename(path + ".openhd-switch", path + ".disabled", ec);
+    }
+    if (ec) std::cerr << "Camera overlay backup retained: " << path << ".openhd-switch\n";
+  }
+  return true;
+}
+
 }  // namespace
 
 bool apply_camera_config_if_needed() {
@@ -334,8 +400,9 @@ bool apply_camera_config_if_needed() {
     applied = apply_rpi_config(profile, config.camera_type.value(), true);
   } else if (platform == X_PLATFORM_TYPE_RPI_OLD) {
     applied = apply_rpi_config(profile, config.camera_type.value(), false);
-  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
-             platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
+    applied = apply_zero3w_camera(profile);
+  } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3) {
     applied = apply_rock_config(profile, "radxa-zero3-");
   } else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
              platform == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||

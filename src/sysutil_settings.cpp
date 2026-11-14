@@ -944,6 +944,7 @@ std::string handle_camera_setup_request(const std::string& line) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"missing camera_type\"}\n";
   }
 
+  const SysutilConfig previous = config;
   config.camera_type = normalize_camera_type(*camera_type);
   if (!write_sysutil_config(config)) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"config write failed\"}\n";
@@ -951,6 +952,17 @@ std::string handle_camera_setup_request(const std::string& line) {
 
   set_status("camera_setup", "Camera setup requested",
              "Applying camera configuration.");
+  if (platform_info().platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
+    // OpenHD persists its camera selection and reboots after this response.
+    if (!apply_camera_config_if_needed()) {
+      (void)write_sysutil_config(previous);
+      set_status("camera_setup", "Camera setup failed",
+                 "Unable to apply camera configuration.", 2);
+      return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false}\n";
+    }
+    (void)apply_display_config_if_needed();
+    return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":true,\"applied\":true}\n";
+  }
   std::thread([]() {
     if (!apply_camera_config_if_needed()) {
       set_status("camera_setup", "Camera setup failed",
