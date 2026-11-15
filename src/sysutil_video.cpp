@@ -104,6 +104,18 @@ static constexpr const char* kLegacyRpiGroundPipeline =
     "clock-rate=(int)90000, encoding-name=(string)H264' ! rtph264depay ! "
     "'video/x-h264,stream-format=byte-stream' ! fdsink | fpv_video0.bin /dev/stdin";
 
+static std::string pi_video_pipeline(int port, bool hevc) {
+    const char* player = hevc
+        ? "/usr/local/bin/openhd_pi_vid --hevc"
+        : "p=/usr/local/bin/openhd_pi_vid; if [ ! -x \"$p\" ]; then p=fpv_video0.bin; fi; exec \"$p\"";
+    return "gst-launch-1.0 -q udpsrc port=" + std::to_string(port) +
+           " caps='application/x-rtp,media=(string)video,clock-rate=(int)90000,"
+           "encoding-name=(string)" + (hevc ? "H265' ! rtph265depay ! " : "H264' ! rtph264depay ! ") +
+           (hevc ? "'video/x-h265,stream-format=byte-stream,alignment=au'" :
+                   "'video/x-h264,stream-format=byte-stream'") +
+           " ! fdsink | ( " + player + " /dev/stdin )";
+}
+
 static constexpr const char* kPi5GroundPipeline =
     "gst-launch-1.0 -q udpsrc port=5600 "
     "caps='application/x-rtp, media=(string)video, clock-rate=(int)90000, "
@@ -154,6 +166,20 @@ bool is_rpi_platform() {
            info.platform_type == X_PLATFORM_TYPE_RPI_4 ||
            info.platform_type == X_PLATFORM_TYPE_RPI_CM4 ||
            info.platform_type == X_PLATFORM_TYPE_RPI_5;
+}
+
+bool is_pi4_fkms() {
+    const auto platform = platform_info().platform_type;
+    if (platform != X_PLATFORM_TYPE_RPI_4 && platform != X_PLATFORM_TYPE_RPI_CM4)
+        return false;
+    std::error_code ec;
+    for (const auto& node : std::filesystem::directory_iterator("/proc/device-tree/soc", ec)) {
+        if (node.path().filename().string().rfind("firmwarekms", 0) != 0) continue;
+        std::string status;
+        if (read_file((node.path() / "status").string(), status) && status.rfind("okay", 0) == 0)
+            return true;
+    }
+    return false;
 }
 
 bool is_rockchip_platform() {
@@ -336,37 +362,38 @@ void stop_video_process() {
     if (g_video_pid <= 0) {
         return;
     }
-    ::kill(g_video_pid, SIGTERM);
+    ::kill(-g_video_pid, SIGTERM);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline) {
         int status = 0;
         const pid_t result = ::waitpid(g_video_pid, &status, WNOHANG);
-        if (result == g_video_pid) {
+        if (result == g_video_pid || result == -1) {
+            // The shell may have exited before the pipe's other processes.
+            ::kill(-g_video_pid, SIGKILL);
             g_video_pid = -1;
             return;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    ::kill(g_video_pid, SIGKILL);
+    ::kill(-g_video_pid, SIGKILL);
     ::waitpid(g_video_pid, nullptr, 0);
     g_video_pid = -1;
 }
 
-bool start_video_process() {
+bool start_video_process(int port = 5600, bool hevc = false) {
+    const bool pi5 = platform_info().platform_type == X_PLATFORM_TYPE_RPI_5;
+    const auto pipeline = pi5 ? std::string(kPi5GroundPipeline) : pi_video_pipeline(port, hevc);
     stop_video_process();
     const pid_t pid = ::fork();
     if (pid < 0) {
         return false;
     }
     if (pid == 0) {
-        ::setsid();
-        const char* pipeline =
-            platform_info().platform_type == X_PLATFORM_TYPE_RPI_5
-                ? kPi5GroundPipeline
-                : kLegacyRpiGroundPipeline;
-        ::execl("/bin/sh", "sh", "-c", pipeline, static_cast<char*>(nullptr));
+        ::setpgid(0, 0);
+        ::execl("/bin/sh", "sh", "-c", pipeline.c_str(), static_cast<char*>(nullptr));
         _exit(127);
     }
+    ::setpgid(pid, pid);
     g_video_pid = pid;
     return true;
 }
@@ -550,6 +577,8 @@ void start_ground_video_if_needed() {
                   << platform_info().platform_type << std::endl;
         return;
     }
+    // On FKMS the HUD selects the external codec and requests its pipeline.
+    if (is_pi4_fkms()) return;
     if (!start_video_process()) {
         std::cerr << "Failed to start ground video pipeline." << std::endl;
     }
@@ -597,13 +626,22 @@ void start_openhd_services_if_needed() {
         return;
     }
 
-    const bool openhd_started = start_unit("openhd.service");
+    // The FKMS video client waits for our socket. Queue dependent services
+    // without waiting for systemd so we can publish the socket first.
+    const bool pi4_fkms = ground && is_pi4_fkms();
+    const bool openhd_started = pi4_fkms
+        ? run_cmd("systemctl start --no-block openhd.service")
+        : start_unit("openhd.service");
     if (!openhd_started) {
         std::cerr << "Failed to start openhd.service" << std::endl;
     }
 
     if (ground && !should_use_openhd_glide()) {
-        start_qopenhd_if_needed();
+        if (pi4_fkms) {
+            run_cmd("systemctl start --no-block qopenhd.service");
+        } else {
+            start_qopenhd_if_needed();
+        }
     }
 
     const std::string openhd_state = unit_state("openhd.service");
@@ -630,7 +668,16 @@ std::string handle_video_request(const std::string& line) {
     } else if (is_rpi_platform()) {
         pipeline = "rpi_process";
         if (action == "start" || action == "restart") {
-            ok = start_video_process();
+            auto codec = extract_string_field(line, "codec").value_or("h264");
+            std::transform(codec.begin(), codec.end(), codec.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            const int port = extract_int_field(line, "udp_port").value_or(5600);
+            const bool hevc = codec == "h265" || codec == "hevc";
+            const bool hevc_player = is_pi4_fkms() &&
+                ::access("/usr/local/bin/openhd_pi_vid", X_OK) == 0;
+            ok = port > 0 && port <= 65535 &&
+                 (codec == "h264" || (hevc && hevc_player)) &&
+                 start_video_process(port, hevc);
         } else if (action == "stop") {
             stop_video_process();
             ok = true;
