@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fcntl.h>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -27,11 +29,14 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "sysutil_part.h"
 #include "sysutil_protocol.h"
 #include "sysutil_status.h"
+#include "sysutil_platform.h"
+#include "platforms_generated.h"
 
 namespace sysutil {
 namespace {
@@ -42,6 +47,11 @@ constexpr std::uint64_t kMigrationReserveBytes = 64ULL * 1024ULL * 1024ULL;
 constexpr const char* kRecordingUuidPath =
     "/usr/local/share/OpenHD/SysUtils/recording_uuid";
 std::vector<StorageEntry> g_last_inventory;
+std::map<std::string, std::uint8_t> g_card_ids;
+std::set<std::string> g_probed_cards;
+std::string g_scanning_card;
+std::atomic<bool> g_stop_scan{false};
+std::future<bool> g_blank_card_probe;
 
 struct BlockRow {
   std::string device;
@@ -243,6 +253,56 @@ bool is_block_device(const std::string& device) {
   return ::stat(device.c_str(), &st) == 0 && S_ISBLK(st.st_mode);
 }
 
+std::string sd_card_identity(const std::string& device) {
+  const auto name = std::filesystem::path(device).filename();
+  if (!std::regex_match(name.string(), std::regex("mmcblk[0-9]+"))) {
+    return {};
+  }
+  const auto card = std::filesystem::path("/sys/class/block") / name / "device";
+  std::ifstream type(card / "type");
+  std::ifstream cid(card / "cid");
+  std::string type_name, identity;
+  if (!(type >> type_name) || type_name != "SD" || !(cid >> identity)) {
+    return {};
+  }
+  return identity;
+}
+
+bool root_is_raw_flash() {
+  std::ifstream mounts("/proc/mounts");
+  std::string source, target, filesystem, rest;
+  while (mounts >> source >> target >> filesystem) {
+    std::getline(mounts, rest);
+    if (target == "/") {
+      return filesystem == "ubifs" ||
+             (filesystem == "squashfs" &&
+              (source.rfind("/dev/mtdblock", 0) == 0 ||
+               source.rfind("/dev/ubiblock", 0) == 0));
+    }
+  }
+  return false;
+}
+
+bool stream_is_zeroed(std::istream& disk, std::uint64_t remaining) {
+  std::vector<char> bytes(1024 * 1024);
+  while (remaining > 0) {
+    const auto length = std::min<std::uint64_t>(bytes.size(), remaining);
+    if (g_stop_scan || !disk.read(bytes.data(), length) ||
+        std::any_of(bytes.data(), bytes.data() + length,
+                    [](char byte) { return byte != 0; })) {
+      return false;
+    }
+    remaining -= length;
+  }
+  return true;
+}
+
+bool card_is_zeroed(const StorageEntry& card) {
+  std::ifstream disk(card.device, std::ios::binary);
+  return stream_is_zeroed(disk, card.size_bytes) &&
+         sd_card_identity(card.device) == card.card_identity;
+}
+
 std::set<std::string> root_devices(const std::vector<BlockRow>& rows) {
   std::set<std::string> roots;
   for (const auto& row : rows) {
@@ -305,7 +365,8 @@ std::uint64_t probe_free_bytes(const BlockRow& row) {
 std::optional<StorageEntry> find_current_entry(const StorageEntry& snapshot) {
   for (const auto& current : list_storage_inventory()) {
     if (canonical_device(current.device) == canonical_device(snapshot.device) &&
-        current.kind == snapshot.kind) {
+        current.kind == snapshot.kind &&
+        current.card_identity == snapshot.card_identity) {
       StorageEntry result = current;
       result.id = snapshot.id;
       return result;
@@ -415,7 +476,7 @@ bool mount_for_recording(const StorageEntry& entry, std::string& message) {
 
   std::optional<StorageEntry> previous_video;
   for (const auto& candidate : list_safe_storage()) {
-    if (candidate.mounted_at_video) {
+    if (candidate.mountpoint == kVideoMountPoint) {
       previous_video = candidate;
       break;
     }
@@ -629,6 +690,21 @@ bool repartition_disk(const StorageEntry& entry, std::string& message) {
     message = "Selected storage is not a repartitionable disk.";
     return false;
   }
+  if (!entry.card_identity.empty() &&
+      sd_card_identity(entry.device) != entry.card_identity) {
+    message = "The selected SD card is no longer inserted.";
+    return false;
+  }
+  const bool has_sfdisk =
+      run_process({"/bin/sh", "-c", "command -v sfdisk >/dev/null"});
+  const bool has_parted = !has_sfdisk &&
+      run_process({"/bin/sh", "-c", "command -v parted >/dev/null && "
+                                    "command -v partprobe >/dev/null"});
+  if ((!has_sfdisk && !has_parted) ||
+      !run_process({"/bin/sh", "-c", "command -v mkfs.vfat >/dev/null"})) {
+    message = "Partitioning tools are missing from the Air image.";
+    return false;
+  }
   for (const auto& child : list_safe_storage()) {
     if (child.parent_device == entry.device && !child.mountpoint.empty()) {
       if (!unmount_if_mounted(child)) {
@@ -639,10 +715,16 @@ bool repartition_disk(const StorageEntry& entry, std::string& message) {
   }
   set_status("storage.repartitioning", "Repartitioning storage",
              "Creating a new GPT partition table.");
-  if (!run_process({"parted", "--script", entry.device, "mklabel", "gpt"}) ||
-      !run_process({"parted", "--script", entry.device, "mkpart", "primary",
-                    "fat32", "1MiB", "100%"}) ||
-      !run_process({"partprobe", entry.device})) {
+  const bool partitioned = has_sfdisk
+      ? run_process({"/bin/sh", "-c",
+                     "printf '%s\\n' 'label: gpt' '' "
+                     "'type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7' | "
+                     "sfdisk --wipe always \"$1\"",
+                     "openhd-sfdisk", entry.device})
+      : run_process({"parted", "--script", entry.device, "mklabel", "gpt",
+                     "mkpart", "primary", "fat32", "1MiB", "100%"}) &&
+            run_process({"partprobe", entry.device});
+  if (!partitioned) {
     message = "Creating the partition table failed.";
     return false;
   }
@@ -656,6 +738,16 @@ bool repartition_disk(const StorageEntry& entry, std::string& message) {
           {"mkfs.vfat", "-F", "32", "-n", kRecordingsLabel, partition})) {
     message = "Partition created, but FAT32 formatting failed.";
     return false;
+  }
+  if (!entry.card_identity.empty()) {
+    StorageEntry recording;
+    recording.device = partition;
+    recording.kind = "partition";
+    recording.filesystem = "vfat";
+    recording.can_mount = true;
+    if (!mount_for_recording(recording, message)) return false;
+    message = "SD card formatted and mounted for recording.";
+    return true;
   }
   message = "Disk repartitioned with one FAT32 RECORDINGS partition.";
   return true;
@@ -725,7 +817,55 @@ bool create_recording_partition(const StorageEntry& entry,
 
 }  // namespace
 
-std::vector<StorageEntry> list_storage_inventory() {
+bool uses_recording_sd_policy() {
+  switch (platform_info().platform_type) {
+    case X_PLATFORM_TYPE_OPENHD_X21:
+    case X_PLATFORM_TYPE_LUCKFOX_RV110X:
+    case X_PLATFORM_TYPE_LUCKFOX_AURA:
+    case X_PLATFORM_TYPE_LUCKFOX_LYRA:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void prepare_recording_sd() {
+  if (!uses_recording_sd_policy()) return;
+  if (g_blank_card_probe.valid()) {
+    if (g_blank_card_probe.wait_for(std::chrono::seconds(0)) !=
+        std::future_status::ready) return;
+    const bool blank = g_blank_card_probe.get();
+    const auto identity = std::exchange(g_scanning_card, std::string{});
+    if (blank) {
+      for (const auto& card : list_storage_inventory(false)) {
+        if (!card.recording_card_needs_format || card.card_identity != identity ||
+            card.card_has_partitions) continue;
+        std::string message;
+        if (!repartition_disk(card, message)) {
+          std::cerr << "[sysutils][storage] " << message << std::endl;
+        }
+        break;
+      }
+    }
+  }
+  const auto entries = list_storage_inventory(false);
+  for (const auto& card : entries) {
+    if (!card.recording_card_needs_format || card.card_has_partitions ||
+        !g_probed_cards.insert(card.card_identity).second) {
+      continue;
+    }
+    g_scanning_card = card.card_identity;
+    g_blank_card_probe = std::async(std::launch::async, card_is_zeroed, card);
+    break;
+  }
+}
+
+void stop_recording_sd_probe() {
+  g_stop_scan = true;
+  if (g_blank_card_probe.valid()) g_blank_card_probe.wait();
+}
+
+std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
   const auto rows = read_block_rows();
   const auto roots = root_devices(rows);
   std::set<std::string> excluded_disks;
@@ -736,7 +876,10 @@ std::vector<StorageEntry> list_storage_inventory() {
   }
   // Fail closed. Without a known root disk we cannot safely assign mutation
   // capabilities to any block device.
-  if (excluded_disks.empty()) {
+  const bool recording_sd_policy = uses_recording_sd_policy();
+  const bool raw_flash_root = excluded_disks.empty() &&
+      recording_sd_policy && root_is_raw_flash();
+  if (excluded_disks.empty() && !raw_flash_root) {
     std::cerr << "[sysutils][storage] Unable to resolve root disk; refusing "
                  "to expose storage devices."
               << std::endl;
@@ -753,6 +896,9 @@ std::vector<StorageEntry> list_storage_inventory() {
         row.kind == "disk" ? canonical_device(row.device)
                            : canonical_device(row.parent_device);
     const bool is_internal = excluded_disks.count(disk) != 0;
+    const auto card_identity = recording_sd_policy && !is_internal
+                                   ? sd_card_identity(disk) : std::string{};
+    if (raw_flash_root && card_identity.empty()) continue;
     if (row.read_only || !is_block_device(row.device)) {
       continue;
     }
@@ -765,6 +911,7 @@ std::vector<StorageEntry> list_storage_inventory() {
     entry.mountpoint = row.mountpoint;
     entry.size_bytes = row.size_bytes;
     entry.internal = is_internal;
+    entry.card_identity = card_identity;
     entry.mounted_at_video = row.mountpoint == kVideoMountPoint ||
                              (is_internal && row.mountpoint == "/" &&
                               !external_video_mounted);
@@ -775,12 +922,13 @@ std::vector<StorageEntry> list_storage_inventory() {
         is_internal && !is_recording_partition;
     entry.can_format = row.kind == "partition" &&
                        !is_protected_system_entry;
-    entry.can_repartition = row.kind == "disk" && !is_internal;
+    entry.can_repartition = row.kind == "disk" && !is_internal &&
+        (card_identity.empty() || card_identity != g_scanning_card);
     entry.can_mount = row.kind == "partition" &&
                       !is_protected_system_entry &&
                       !row.filesystem.empty();
     entry.free_bytes =
-        row.kind == "partition" ? probe_free_bytes(row) : 0;
+        probe_capacity && row.kind == "partition" ? probe_free_bytes(row) : 0;
     if (row.kind == "disk") {
       std::uint64_t last_end = 0;
       for (const auto& child : rows) {
@@ -789,6 +937,7 @@ std::vector<StorageEntry> list_storage_inventory() {
                 canonical_device(row.device)) {
           continue;
         }
+        entry.card_has_partitions = true;
         const auto end = child.start_bytes + child.size_bytes;
         last_end = std::max(last_end, end);
       }
@@ -796,10 +945,19 @@ std::vector<StorageEntry> list_storage_inventory() {
                                     ? row.size_bytes - last_end
                                     : 0;
       entry.can_create_partition =
-          entry.unallocated_bytes >= 1024ULL * 1024ULL * 1024ULL;
+          entry.unallocated_bytes >= 1024ULL * 1024ULL * 1024ULL &&
+          (card_identity.empty() || card_identity != g_scanning_card);
       // Shrinking a mounted root filesystem is not safe. This remains false
       // until an offline, reboot-assisted implementation is available.
       entry.can_resize_partition = false;
+      entry.recording_card_needs_format =
+          !card_identity.empty() && entry.can_repartition &&
+          row.size_bytes >= 2 * 1024 * 1024 &&
+          row.mountpoint.empty() &&
+          std::none_of(rows.begin(), rows.end(), [&](const BlockRow& child) {
+            return canonical_device(child.parent_device) == disk &&
+                (child.label == kRecordingsLabel || !child.mountpoint.empty());
+          });
     }
     entries.push_back(std::move(entry));
   }
@@ -817,7 +975,14 @@ std::vector<StorageEntry> list_storage_inventory() {
     }
   }
   for (auto& entry : entries) {
-    if (entry.id == 0 && next_id <= 254) {
+    if (entry.kind == "disk" && !entry.card_identity.empty()) {
+      // Do not let an old format prompt apply to a different inserted card.
+      auto it = g_card_ids.find(entry.card_identity);
+      if (it == g_card_ids.end() && g_card_ids.size() < 32) {
+        it = g_card_ids.emplace(entry.card_identity, 254 - g_card_ids.size()).first;
+      }
+      if (it != g_card_ids.end()) entry.id = it->second;
+    } else if (entry.id == 0 && next_id <= 222) {
       entry.id = static_cast<std::uint8_t>(next_id++);
     }
   }
@@ -874,6 +1039,8 @@ std::string build_storage_list_response() {
         << (entry.can_create_partition ? "true" : "false")
         << ",\"can_resize_partition\":"
         << (entry.can_resize_partition ? "true" : "false")
+        << ",\"recording_card_needs_format\":"
+        << (entry.recording_card_needs_format ? "true" : "false")
         << "}";
   }
   out << "]}\n";

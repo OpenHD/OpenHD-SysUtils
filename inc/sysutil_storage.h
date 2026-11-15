@@ -31,12 +31,19 @@ struct StorageEntry {
   bool can_mount = false;
   bool can_create_partition = false;
   bool can_resize_partition = false;
+  bool recording_card_needs_format = false;
+  bool card_has_partitions = false;
+  std::string card_identity;
 };
+
+bool uses_recording_sd_policy();
+void prepare_recording_sd();
+void stop_recording_sd_probe();
 
 // Returns mutation-safe recording targets. Protected system entries are omitted.
 std::vector<StorageEntry> list_safe_storage();
 // Read-only inventory for the UI. Includes the protected system disk.
-std::vector<StorageEntry> list_storage_inventory();
+std::vector<StorageEntry> list_storage_inventory(bool probe_capacity = true);
 
 bool is_storage_list_request(const std::string& line);
 std::string build_storage_list_response();

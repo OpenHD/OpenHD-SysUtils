@@ -467,6 +467,7 @@ int main(int argc, char* argv[]) {
                            std::chrono::seconds(5);
     auto next_certificate_sync = std::chrono::steady_clock::now() +
                                  std::chrono::hours(6);
+    auto next_recording_sd_probe = std::chrono::steady_clock::now();
 
     int serverFd = createAndBindSocket();
     if (serverFd < 0) {
@@ -487,6 +488,11 @@ int main(int argc, char* argv[]) {
     int exitCode = 0;
 
     while (!gStopRequested) {
+        if (std::chrono::steady_clock::now() >= next_recording_sd_probe) {
+            sysutil::prepare_recording_sd();
+            next_recording_sd_probe = std::chrono::steady_clock::now() +
+                                      std::chrono::seconds(5);
+        }
         if (std::chrono::steady_clock::now() >= next_certificate_sync) {
             (void)sysutil::sync_fleetcontrol_video_certificate();
             next_certificate_sync = std::chrono::steady_clock::now() +
@@ -553,6 +559,7 @@ int main(int argc, char* argv[]) {
     ::close(serverFd);
     socketGuard.disarm();
     ::unlink(std::string(kSocketPath).c_str());
+    sysutil::stop_recording_sd_probe();
     sysutil::shutdown_update_worker();
     return exitCode;
 }

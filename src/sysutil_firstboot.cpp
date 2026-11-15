@@ -38,6 +38,7 @@
 #include "sysutil_protocol.h"
 #include "sysutil_settings.h"
 #include "sysutil_status.h"
+#include "sysutil_storage.h"
 
 namespace sysutil {
 namespace {
@@ -140,7 +141,7 @@ void run_firstboot_tasks() {
   }
 
   bool needs_reboot = false;
-  if (resize_partition_firstboot()) {
+  if (!uses_recording_sd_policy() && resize_partition_firstboot()) {
     needs_reboot = true;
   }
   mount_known_partitions();
