@@ -257,6 +257,22 @@ bool apply_rpi_config(const CameraProfile* primary_profile, int primary_cam_id,
     }
     cam_lines.push_back(camera_line);
   }
+  // This CAM1 supply workaround is verified on the original Arducam IMX519
+  // with VC4. Pi 5 has different regulators and must keep its own power setup.
+  if (!is_rpi5 && ((primary_profile && primary_profile->id == 41) ||
+                   (secondary_profile && secondary_profile->id == 41))) {
+    const std::string overlay = "imx519-focus-power.dtbo";
+    const std::string source = "/usr/share/openhd/overlays/" + overlay;
+    const auto boot_dir =
+        std::filesystem::path(select_boot_config_path()).parent_path();
+    if (read_file_exists(source)) {
+      if (!copy_file_if_exists(source, (boot_dir / "overlays" / overlay).string())) {
+        std::cerr << "Cannot install IMX519 autofocus power overlay" << std::endl;
+        return false;
+      }
+      cam_lines.push_back("dtoverlay=imx519-focus-power");
+    }
+  }
   return update_boot_config(dtoverlay_line, cam_lines);
 }
 

@@ -1,0 +1,16 @@
+/dts-v1/;
+/plugin/;
+
+// The original Arducam IMX519's AK7375 can fail its first resume when CAM1
+// power is enabled only as the lens is opened. Keep the shared camera supply
+// enabled from boot so libcamera can discover the autofocus controls.
+/ {
+	compatible = "brcm,bcm2835";
+	fragment@0 {
+		target = <&cam1_reg>;
+		__overlay__ {
+			regulator-boot-on;
+			regulator-always-on;
+		};
+	};
+};

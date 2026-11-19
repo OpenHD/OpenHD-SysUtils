@@ -7,6 +7,23 @@ option(OPENHD_X20_PACKAGE "Include the X20-only runtime assets" OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Raspberry Pi packages include the IMX519 lens power-up workaround. Other
+# platforms do not need a device-tree compiler or this optional overlay.
+find_program(DTC_EXECUTABLE dtc)
+if(DTC_EXECUTABLE)
+    set(IMX519_POWER_OVERLAY ${CMAKE_CURRENT_BINARY_DIR}/imx519-focus-power.dtbo)
+    add_custom_command(
+        OUTPUT ${IMX519_POWER_OVERLAY}
+        COMMAND ${DTC_EXECUTABLE} -@ -I dts -O dtb
+                -o ${IMX519_POWER_OVERLAY}
+                ${CMAKE_CURRENT_SOURCE_DIR}/misc/overlays/imx519-focus-power.dts
+        DEPENDS misc/overlays/imx519-focus-power.dts
+        VERBATIM
+    )
+    add_custom_target(camera_power_overlay ALL DEPENDS ${IMX519_POWER_OVERLAY})
+    install(FILES ${IMX519_POWER_OVERLAY} DESTINATION /usr/share/openhd/overlays)
+endif()
+
 set(PLATFORMS_JSON ${CMAKE_CURRENT_SOURCE_DIR}/misc/platforms.json)
 set(GENERATED_PLATFORMS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/platforms_generated.h)
 
