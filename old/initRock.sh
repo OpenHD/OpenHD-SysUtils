@@ -51,15 +51,8 @@ fi
 
 if [[ -f "/config/openhd/rock-rk3566.txt" ]]; then
     echo "Running on a rk3566 "
-        if [[ -f "/config/openhd/resize.txt" ]]; then
-        mkdir -p /run/openhd/
-        touch /run/openhd/hold.pid
-        echo resizing partition
-        parted /dev/mmcblk1 --script resizepart 4 100%
-        sudo rm /config/openhd/resize.txt
-        sudo mkfs.vfat -F 32 -n "RECORDINGS" /dev/mmcblk1p4
-        reboot
-        fi
+    # Storage provisioning is performed offline by ImageWriter.
+
     if [ -e /config/openhd/air.txt ]; then 
         if [ -e /config/openhd/camera1.txt ] && [ ! -e /config/openhd/camera.txt ]; then
             #quite hacky now, but better then nothing

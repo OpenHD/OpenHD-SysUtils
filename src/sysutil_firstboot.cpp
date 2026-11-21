@@ -97,9 +97,7 @@ void run_firstboot_tasks() {
   }
 
   bool needs_reboot = false;
-  if (resize_partition_firstboot()) {
-    needs_reboot = true;
-  }
+  // Storage is prepared offline by ImageWriter, never during startup.
   mount_known_partitions();
   sync_settings_from_files();
   {

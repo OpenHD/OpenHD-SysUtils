@@ -208,3 +208,11 @@ configure_file(
     @ONLY
 )
 include(CPack)
+
+# Keep storage mutation behind explicit user requests, never startup/polling.
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME storage_ownership
+        COMMAND ${CMAKE_COMMAND} -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_storage_ownership.cmake)
+endif()
