@@ -24,9 +24,7 @@
 #include "sysutil_part.h"
 
 #include "sysutil_status.h"
-#include "sysutil_config.h"
 #include "sysutil_storage.h"
-#include "sysutil_startup_hold.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -457,38 +455,6 @@ bool resize_partition_by_uuid(const std::string& uuid, int partition_number) {
   return true;
 }
 
-bool run_fdisk_type_fat32(const std::string& base_device, int partition_number) {
-  std::ostringstream cmd;
-  cmd << "sh -c \"printf 't\\n" << partition_number
-      << "\\n0c\\nw\\n' | fdisk " << base_device << "\"";
-  int ret = std::system(cmd.str().c_str());
-  if (ret != 0) {
-    std::cerr << "fdisk type change failed with code " << ret << std::endl;
-    return false;
-  }
-  return true;
-}
-
-bool run_shell_command(const std::string& command) {
-  int ret = std::system(command.c_str());
-  if (ret != 0) {
-    std::cerr << "Command failed (" << ret << "): " << command << std::endl;
-    return false;
-  }
-  return true;
-}
-
-std::string to_lower(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return value;
-}
-
-bool is_fat32(std::string fstype) {
-  fstype = to_lower(std::move(fstype));
-  return fstype == "vfat" || fstype == "fat32" || fstype == "fat";
-}
-
 bool is_label(const std::string& label, const std::string& expected) {
   if (label.empty()) {
     return false;
@@ -554,20 +520,6 @@ std::vector<std::string> list_directory_files(const std::string& path,
   return files;
 }
 
-struct ResizeCandidate {
-  std::string disk_name;
-  std::string part_name;
-  std::string device;
-  std::string fstype;
-  std::string label;
-  long long start_bytes = 0;
-  long long size_bytes = 0;
-  long long free_after = 0;
-};
-
-std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result);
-bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot);
-
 bool resize_partition() {
   set_status("partitioning", "Listing partitions", "Preparing partition tasks.");
   const auto partitions = list_partitions();
@@ -584,112 +536,6 @@ bool resize_partition() {
               << std::endl;
   }
 
-  return true;
-}
-
-std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) {
-  // Never infer partition geometry or select configuration/unknown storage.
-  if (!result.has_start || !result.has_parent) return std::nullopt;
-  const auto& rows = result.rows;
-  std::optional<ResizeCandidate> best;
-
-  for (const auto& disk : rows) {
-    if (disk.type != "disk") {
-      continue;
-    }
-    std::vector<LsblkRow> parts;
-    for (const auto& row : rows) {
-      if (row.type != "part") {
-        continue;
-      }
-      if (result.has_parent) {
-        if (row.parent == disk.name) {
-          parts.push_back(row);
-        }
-      } else {
-        auto base = base_device_from_name(row.name);
-        if (base && *base == disk.name) {
-          parts.push_back(row);
-        }
-      }
-    }
-
-    if (parts.empty()) {
-      continue;
-    }
-
-    if (result.has_start) {
-      std::sort(parts.begin(), parts.end(),
-                [](const LsblkRow& a, const LsblkRow& b) {
-                  return a.start_bytes < b.start_bytes;
-                });
-    } else {
-      std::sort(parts.begin(), parts.end(),
-                [](const LsblkRow& a, const LsblkRow& b) {
-                  return a.name < b.name;
-                });
-      long long cursor = 0;
-      for (auto& part : parts) {
-        part.start_bytes = cursor;
-        cursor += part.size_bytes;
-      }
-    }
-
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-      const auto& part = parts[i];
-      const bool is_last = (i + 1 == parts.size());
-      if (!is_last || !is_fat32(part.fstype) ||
-          !is_label(part.label, "recordings") || !part.mountpoint.empty()) {
-        continue;
-      }
-      long long end = part.start_bytes + part.size_bytes;
-      long long free_after = 0;
-      if (i + 1 < parts.size()) {
-        free_after = parts[i + 1].start_bytes - end;
-      } else if (disk.size_bytes > 0 && disk.size_bytes > end) {
-        free_after = disk.size_bytes - end;
-      }
-      constexpr long long kMinResizeBytes = 1024LL * 1024LL * 1024LL;
-      if (free_after < kMinResizeBytes) {
-        continue;
-      }
-
-      ResizeCandidate candidate;
-      candidate.disk_name = disk.name;
-      candidate.part_name = part.name;
-      candidate.device = "/dev/" + part.name;
-      candidate.fstype = part.fstype;
-      candidate.label = part.label;
-      candidate.start_bytes = part.start_bytes;
-      candidate.size_bytes = part.size_bytes;
-      candidate.free_after = free_after;
-
-      if (!best || candidate.start_bytes > best->start_bytes) {
-        best = std::move(candidate);
-      }
-    }
-  }
-
-  return best;
-}
-
-bool ensure_fstab_entry(const std::string& device, const std::string& mountpoint,
-                        const std::string& fstype) {
-  std::ifstream fstab("/etc/fstab");
-  std::string line;
-  while (std::getline(fstab, line)) {
-    if (line.find(device) != std::string::npos &&
-        line.find(mountpoint) != std::string::npos) {
-      return true;
-    }
-  }
-  std::ofstream out("/etc/fstab", std::ios::app);
-  if (!out) {
-    std::cerr << "Failed to open /etc/fstab for append." << std::endl;
-    return false;
-  }
-  out << device << "  " << mountpoint << "  " << fstype
-      << "  defaults  0  2\n";
   return true;
 }
 
@@ -768,90 +614,12 @@ void mount_known_partitions() {
   ensure_config_aliases();
 }
 
-bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
-  const auto current = find_resize_candidate(read_lsblk_rows());
-  if (!current || current->device != candidate.device ||
-      current->start_bytes != candidate.start_bytes ||
-      current->size_bytes != candidate.size_bytes) {
-    set_status("partitioning", "Unsafe target", "Recording partition changed or is mounted.");
-    return false;
-  }
-  const std::string partition_device = candidate.device;
-  auto base_device_opt = base_device_for_partition(partition_device);
-  if (!base_device_opt) {
-    std::cerr << "Unable to determine base device for " << partition_device
-              << std::endl;
-    return false;
-  }
-  auto part_number_opt = partition_number_from_device(partition_device);
-  if (!part_number_opt) {
-    std::cerr << "Unable to determine partition number for "
-              << partition_device << std::endl;
-    return false;
-  }
-
-  const std::string base_device = *base_device_opt;
-  const int part_number = *part_number_opt;
-
-  std::error_code ec;
-  std::filesystem::create_directories("/run/openhd", ec);
-  ScopedStartupHold hold("/run/openhd/hold.pid");
-  if (!hold.acquired()) {
-    set_status("partitioning", "Busy", "Another operation is holding OpenHD startup.");
-    return false;
-  }
-
-  set_status("partitioning", "Resizing", "Expanding partition.");
-  std::ostringstream resize_cmd;
-  resize_cmd << "parted " << base_device << " --script resizepart "
-             << part_number << " 100%";
-  if (!run_shell_command(resize_cmd.str())) {
-    return false;
-  }
-
-  set_status("partitioning", "Formatting", "Applying volume label.");
-  if (!run_shell_command("mkfs.vfat -F 32 -n \"RECORDINGS\" " +
-                         partition_device)) {
-    return false;
-  }
-
-  set_status("partitioning", "Updating table", "Setting FAT32 LBA type.");
-  if (!run_fdisk_type_fat32(base_device, part_number)) {
-    return false;
-  }
-
-  set_status("partitioning", "Configuring", "Updating fstab and markers.");
-  std::filesystem::create_directories("/Video", ec);
-
-  if (!ensure_fstab_entry(partition_device, "/Video", "auto")) {
-    return false;
-  }
-
-  if (!mount_partition(partition_device, "/Video", false)) {
-    return false;
-  }
-
-  std::ofstream marker("/Video/external_video_part.txt");
-  marker.close();
-
-  set_status("partitioning.complete", "Complete", "Partition resize complete.");
-  if (reboot) {
-    (void)run_shell_command("reboot");
-  }
-  return true;
-}
-
 std::string build_partitions_response() {
   const auto result = read_lsblk_rows();
   const auto& rows = result.rows;
-  auto candidate = find_resize_candidate(result);
-  const auto safe_storage = list_safe_storage();
   std::set<std::string> safe_devices;
-  for (const auto& entry : safe_storage) {
+  for (const auto& entry : list_safe_storage()) {
     safe_devices.insert(entry.device);
-  }
-  if (candidate && safe_devices.count(candidate->device) == 0) {
-    candidate.reset();
   }
   long long recordings_free_bytes = 0;
   bool recordings_found = false;
@@ -1012,55 +780,14 @@ std::string build_partitions_response() {
   } else {
     out << "null";
   }
-  out << ",\"resizable\":";
-  if (candidate) {
-    out << "{\"device\":\"" << json_escape(candidate->device) << "\"";
-    if (!candidate->label.empty()) {
-      out << ",\"label\":\"" << json_escape(candidate->label) << "\"";
-    }
-    if (!candidate->fstype.empty()) {
-      out << ",\"fstype\":\"" << json_escape(candidate->fstype) << "\"";
-    }
-    out << ",\"freeBytes\":" << candidate->free_after << "}";
-  } else {
-    out << "null";
-  }
-  out << "}\n";
+  out << ",\"resizable\":null}\n";
   return out.str();
 }
 
-std::string handle_partition_resize_request(const std::string& choice) {
-  const bool wants_resize = (choice == "yes" || choice == "true" ||
-                             choice == "1");
-  SysutilConfig config;
-  if (load_sysutil_config(config) == ConfigLoadResult::Loaded &&
-      config.firstboot.has_value() && !config.firstboot.value()) {
-    set_status("partitioning", "Resize skipped",
-               "Partitioning is only available on first boot.");
-    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
-  }
-  const auto candidate = find_resize_candidate(read_lsblk_rows());
-  if (!candidate) {
-    set_status("partitioning", "Not resizable",
-               "No FAT32 partition with free space.");
-    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
-  }
-
-  if (!wants_resize) {
-    set_status("partitioning", "Resize skipped",
-               "Partitioning was not requested.");
-    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":true}\n";
-  }
-
-  set_status("partitioning", "Resize requested",
-             "Preparing to resize FAT32 partition.");
-  if (!resize_fat32_partition(*candidate, true)) {
-    set_status("partitioning", "Resize failed",
-               "Partition resize did not complete.");
-    return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
-  }
-
-  return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":true}\n";
+std::string handle_partition_resize_request(const std::string&) {
+  set_status("partitioning", "Resize unavailable",
+             "Recording storage is allocated by ImageWriter during flashing.");
+  return "{\"type\":\"sysutil.partition.resize.response\",\"accepted\":false}\n";
 }
 
 }  // namespace sysutil

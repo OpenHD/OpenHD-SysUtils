@@ -54,6 +54,7 @@ cat >"${stage_dir}/component-manifest.json" <<EOF
   "package_version": "${package_version}",
   "platform": "x21b",
   "architecture": "aarch64",
+  "imagewriter_provisioning_version": 1,
   "source_commit": "${source_commit}",
   "sdk_sha256": "${X21_SDK_SHA256:-unknown}",
   "sdk_buildroot_commit": "${X21_SDK_BUILDROOT_COMMIT:-unknown}",

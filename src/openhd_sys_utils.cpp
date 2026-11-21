@@ -433,12 +433,12 @@ int main(int argc, char* argv[]) {
                         "Waiting for OpenHD requests.");
     sysutil::init_platform_info();
     sysutil::start_openhd_glide_early_if_needed();
-    sysutil::run_firstboot_tasks();
     sysutil::mount_known_partitions();
     if (!sysutil::import_ubi_provisioning()) {
         std::cerr << "Failed to import ImageWriter configuration; services were not started." << std::endl;
         return 1;
     }
+    sysutil::run_firstboot_tasks();
     sysutil::sync_settings_from_files();
     if (!sysutil::configure_pico_usb()) return 1;
     const auto lte = sysutil::initialize_lte_link();
