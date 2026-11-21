@@ -945,6 +945,14 @@ std::string handle_camera_setup_request(const std::string& line) {
   }
 
   const SysutilConfig previous = config;
+  const int platform = platform_info().platform_type;
+  if (platform == X_PLATFORM_TYPE_RADXA_CM3_OCHIN) {
+    const auto secondary = extract_int_field(line, "camera2_type");
+    if (!secondary) {
+      return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"missing camera2_type\"}\n";
+    }
+    config.camera2_type = normalize_camera_type(*secondary);
+  }
   config.camera_type = normalize_camera_type(*camera_type);
   if (!write_sysutil_config(config)) {
     return "{\"type\":\"sysutil.camera.setup.response\",\"ok\":false,\"message\":\"config write failed\"}\n";
@@ -952,7 +960,8 @@ std::string handle_camera_setup_request(const std::string& line) {
 
   set_status("camera_setup", "Camera setup requested",
              "Applying camera configuration.");
-  if (platform_info().platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
+  if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+      platform == X_PLATFORM_TYPE_RADXA_CM3_OCHIN) {
     // OpenHD persists its camera selection and reboots after this response.
     if (!apply_camera_config_if_needed()) {
       (void)write_sysutil_config(previous);

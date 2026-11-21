@@ -13,6 +13,9 @@
     {"key": "X_PLATFORM_TYPE_OPENHD_X21", "id": 28, "display": "OpenHD X21"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_AURA", "id": 29, "display": "Luckfox Aura (RV1126B)"},
     {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3", "id": 24, "display": "RADXA CM3"},
+    {"key": "X_PLATFORM_TYPE_RADXA_CM3_OCHIN", "id": 38, "display": "RADXA CM3 ON OCHIN"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3", "id": 34, "display": "RADXA ROCK 3"},
+    {"key": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C", "id": 35, "display": "RADXA ROCK 3C"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_RV110X", "id": 25, "display": "RV110X"},
     {"key": "X_PLATFORM_TYPE_LUCKFOX_LYRA", "id": 27, "display": "Luckfox Lyra (RK3506)"},
     {"key": "X_PLATFORM_TYPE_ALWINNER_X20", "id": 30, "display": "X20"},
@@ -150,6 +153,21 @@
       ]
     },
     {
+      "platform": "X_PLATFORM_TYPE_RADXA_CM3_OCHIN",
+      "log": "Detected Radxa CM3 on OCHIN.",
+      "conditions": [
+        {"type": "file_exists", "path": "/boot/openhd/ochin-cm3.txt"},
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["radxa,cm3-rpi-cm4-io"]}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3",
+      "log": "Detected Radxa CM3 on Raspberry Pi CM4 IO.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["radxa,cm3-rpi-cm4-io"]}
+      ]
+    },
+    {
       "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3",
       "log": "Detected Rockchip RK3566 (Radxa CM3).",
       "conditions": [
@@ -158,7 +176,21 @@
       ]
     },
     {
-      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W",
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3",
+      "log": "Detected Radxa ROCK 3A/3B.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["radxa,rock-3a", "radxa,rock-3b", "radxa,rock3a", "radxa,rock3b"]}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C",
+      "log": "Detected Radxa ROCK 3C.",
+      "conditions": [
+        {"type": "file_contains_any", "path": "/proc/device-tree/compatible", "values": ["radxa,rock-3c"]}
+      ]
+    },
+    {
+      "platform": "X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3",
       "log": "Detected Rockchip RK3568 (Radxa ROCK 3 family).",
       "conditions": [
         {"type": "file_regex", "path": "/proc/device-tree/compatible", "pattern": "rockchip,(r[kv][0-9]+)", "case_insensitive": true, "group_equals": "rk3568"},

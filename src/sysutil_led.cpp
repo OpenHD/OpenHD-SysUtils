@@ -110,7 +110,8 @@ void discover(const std::filesystem::path& root = "/sys/class/leds",
       choose("primary", {"user-led2"});
     else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W)
       choose("primary", {"board-led"});
-    else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3)
+    else if (platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
+             platform == X_PLATFORM_TYPE_RADXA_CM3_OCHIN)
       choose("primary", {"pi-led-green", "user-led"});
     else {
       // Never commandeer PWR, wlan/phy, disk or keyboard LEDs.

@@ -305,26 +305,32 @@ void init_platform_info() {
   const bool cached_unknown_platform =
       (has_cached_platform &&
        config.platform_type.value() == X_PLATFORM_TYPE_UNKNOWN);
-  const bool use_cached_platform =
-      has_cached_platform && !cached_unknown_platform && !legacy_pi5_cache;
-
-  if (load_result == ConfigLoadResult::Loaded && config.platform_type &&
-      !cached_unknown_platform && !legacy_pi5_cache) {
-    g_platform_info.platform_type = *config.platform_type;
-  } else {
-    g_platform_info.platform_type = discover_platform_type();
+  const bool ochin_marker = file_exists("/boot/openhd/ochin-cm3.txt");
+  const bool stale_ochin_cache = has_cached_platform &&
+      ((config.platform_type == X_PLATFORM_TYPE_RADXA_CM3_OCHIN) != ochin_marker);
+  // Older releases cached ROCK 3 boards under the Zero 3W platform ID.
+  std::optional<int> detected_platform;
+  if (has_cached_platform &&
+      config.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W) {
+    detected_platform = discover_platform_type();
   }
+  const bool stale_rock3_cache =
+      detected_platform == X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3 ||
+      detected_platform == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C;
+  const bool use_cached_platform =
+      has_cached_platform && !cached_unknown_platform && !legacy_pi5_cache &&
+      !stale_ochin_cache && !stale_rock3_cache;
 
-  if (load_result == ConfigLoadResult::Loaded && config.platform_name &&
-      !cached_unknown_platform && !legacy_pi5_cache) {
+  if (use_cached_platform) {
+    g_platform_info.platform_type = *config.platform_type;
     g_platform_info.platform_name = *config.platform_name;
   } else {
+    g_platform_info.platform_type = detected_platform ? *detected_platform : discover_platform_type();
     g_platform_info.platform_name =
         platform_type_to_string(g_platform_info.platform_type);
   }
 
-  if ((!has_cached_platform || cached_unknown_platform || legacy_pi5_cache) &&
-      load_result != ConfigLoadResult::Error) {
+  if (!use_cached_platform && load_result != ConfigLoadResult::Error) {
     SysutilConfig updated_config = config;
     updated_config.platform_type = g_platform_info.platform_type;
     updated_config.platform_name = g_platform_info.platform_name;

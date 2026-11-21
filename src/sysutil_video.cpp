@@ -159,7 +159,10 @@ bool is_rpi_platform() {
 bool is_rockchip_platform() {
     const auto& info = platform_info();
     return info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+           info.platform_type == X_PLATFORM_TYPE_RADXA_CM3_OCHIN ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3 ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
            info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5;
@@ -168,7 +171,10 @@ bool is_rockchip_platform() {
 bool is_rk3566_platform() {
     const auto& info = platform_info();
     return info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
-           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3;
+           info.platform_type == X_PLATFORM_TYPE_RADXA_CM3_OCHIN ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3 ||
+           info.platform_type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C;
 }
 
 bool uses_native_rockchip_video() {
@@ -520,7 +526,10 @@ bool generate_decode_scripts_and_services() {
     }
     // Rockchip Logic
     else if (type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W ||
+             type == X_PLATFORM_TYPE_RADXA_CM3_OCHIN ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3 ||
+             type == X_PLATFORM_TYPE_ROCKCHIP_RK3568_RADXA_ROCK3 ||
+             type == X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ROCK3C ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_A ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B ||
              type == X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5) {

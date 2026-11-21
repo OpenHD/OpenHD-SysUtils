@@ -65,7 +65,7 @@ struct PlatformUarts {
 // fill remaining functions.
 //
 // clang-format off
-constexpr std::array<PlatformUarts, 14> kPlatformUarts{{
+constexpr std::array<PlatformUarts, 15> kPlatformUarts{{
 //  PLATFORM                                                    SOC                       TELEMETRY       OPENHD          SBUS
     {X_PLATFORM_TYPE_ORQA,                                      "NXP i.MX family",         "/dev/ttymxc0",  "/dev/ttymxc1", nullptr},
     {X_PLATFORM_TYPE_RPI_OLD,                                   "Broadcom BCM283x",        "/dev/serial0",  "/dev/serial1", nullptr},
@@ -77,6 +77,7 @@ constexpr std::array<PlatformUarts, 14> kPlatformUarts{{
     {X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_ROCK5_B,             "Rockchip RK3588",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ROCKCHIP_RK3588_RADXA_CM5,                 "Rockchip RK3588",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_CM3,                 "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
+    {X_PLATFORM_TYPE_RADXA_CM3_OCHIN,                            "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W,              "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ALWINNER_X20,                              "Allwinner X20",           "/dev/ttyS4",    nullptr,        nullptr},
     {X_PLATFORM_TYPE_LUCKFOX_RV110X,                            "Rockchip RV1103/RV1106",  "/dev/ttyS3",    nullptr,        nullptr},
