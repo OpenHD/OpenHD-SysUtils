@@ -8,21 +8,8 @@ kernel_type=$(echo "$kernel_version" | awk -F '-' '{print $2}')
 
 if [[ -e "/boot/openhd/rpi.txt" ]]; then
     echo "Running on a raspberry pi "
-        if [[ -f "/boot/openhd/resize.txt" ]]; then
-        mkdir -p /run/openhd/
-        touch /run/openhd/hold.pid
-        echo "resizing partition"
-        sudo mkfs.fat -F 32 /dev/mmcblk0p3
-        parted /dev/mmcblk0 --script resizepart 3 100%
-        sudo rm /boot/openhd/resize.txt
-        sudo mkfs.vfat -F 32 -n "RECORDINGS" /dev/mmcblk0p3
-        echo -e "t\n3\n0c\nw" | fdisk /dev/mmcblk0
-        sudo echo "/dev/mmcblk0p3  /Videos  auto  defaults  0  2" | sudo tee -a /etc/fstab
-        mkdir -p /tmp/test
-        mount /dev/mmcblk0p3 /tmp/test
-        touch /tmp/test/external_video_part.txt
-        reboot
-        fi
+    # Storage provisioning is performed offline by ImageWriter.
+
 fi
 
 if [[ "$kernel_type" == "v7l+" ]]; then

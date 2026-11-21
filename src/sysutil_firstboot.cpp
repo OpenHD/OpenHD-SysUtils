@@ -38,7 +38,6 @@
 #include "sysutil_protocol.h"
 #include "sysutil_settings.h"
 #include "sysutil_status.h"
-#include "sysutil_storage.h"
 
 namespace sysutil {
 namespace {
@@ -141,9 +140,7 @@ void run_firstboot_tasks() {
   }
 
   bool needs_reboot = false;
-  if (!uses_recording_sd_policy() && resize_partition_firstboot()) {
-    needs_reboot = true;
-  }
+  // Storage is prepared offline by ImageWriter, never during startup.
   mount_known_partitions();
   sync_settings_from_files();
   {

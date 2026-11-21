@@ -12,7 +12,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -20,7 +19,6 @@
 #include <filesystem>
 #include <fcntl.h>
 #include <fstream>
-#include <future>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -48,10 +46,6 @@ constexpr const char* kRecordingUuidPath =
     "/usr/local/share/OpenHD/SysUtils/recording_uuid";
 std::vector<StorageEntry> g_last_inventory;
 std::map<std::string, std::uint8_t> g_card_ids;
-std::set<std::string> g_probed_cards;
-std::string g_scanning_card;
-std::atomic<bool> g_stop_scan{false};
-std::future<bool> g_blank_card_probe;
 
 struct BlockRow {
   std::string device;
@@ -281,26 +275,6 @@ bool root_is_raw_flash() {
     }
   }
   return false;
-}
-
-bool stream_is_zeroed(std::istream& disk, std::uint64_t remaining) {
-  std::vector<char> bytes(1024 * 1024);
-  while (remaining > 0) {
-    const auto length = std::min<std::uint64_t>(bytes.size(), remaining);
-    if (g_stop_scan || !disk.read(bytes.data(), length) ||
-        std::any_of(bytes.data(), bytes.data() + length,
-                    [](char byte) { return byte != 0; })) {
-      return false;
-    }
-    remaining -= length;
-  }
-  return true;
-}
-
-bool card_is_zeroed(const StorageEntry& card) {
-  std::ifstream disk(card.device, std::ios::binary);
-  return stream_is_zeroed(disk, card.size_bytes) &&
-         sd_card_identity(card.device) == card.card_identity;
 }
 
 std::set<std::string> root_devices(const std::vector<BlockRow>& rows) {
@@ -829,42 +803,6 @@ bool uses_recording_sd_policy() {
   }
 }
 
-void prepare_recording_sd() {
-  if (!uses_recording_sd_policy()) return;
-  if (g_blank_card_probe.valid()) {
-    if (g_blank_card_probe.wait_for(std::chrono::seconds(0)) !=
-        std::future_status::ready) return;
-    const bool blank = g_blank_card_probe.get();
-    const auto identity = std::exchange(g_scanning_card, std::string{});
-    if (blank) {
-      for (const auto& card : list_storage_inventory(false)) {
-        if (!card.recording_card_needs_format || card.card_identity != identity ||
-            card.card_has_partitions) continue;
-        std::string message;
-        if (!repartition_disk(card, message)) {
-          std::cerr << "[sysutils][storage] " << message << std::endl;
-        }
-        break;
-      }
-    }
-  }
-  const auto entries = list_storage_inventory(false);
-  for (const auto& card : entries) {
-    if (!card.recording_card_needs_format || card.card_has_partitions ||
-        !g_probed_cards.insert(card.card_identity).second) {
-      continue;
-    }
-    g_scanning_card = card.card_identity;
-    g_blank_card_probe = std::async(std::launch::async, card_is_zeroed, card);
-    break;
-  }
-}
-
-void stop_recording_sd_probe() {
-  g_stop_scan = true;
-  if (g_blank_card_probe.valid()) g_blank_card_probe.wait();
-}
-
 std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
   const auto rows = read_block_rows();
   const auto roots = root_devices(rows);
@@ -922,8 +860,7 @@ std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
         is_internal && !is_recording_partition;
     entry.can_format = row.kind == "partition" &&
                        !is_protected_system_entry;
-    entry.can_repartition = row.kind == "disk" && !is_internal &&
-        (card_identity.empty() || card_identity != g_scanning_card);
+    entry.can_repartition = row.kind == "disk" && !is_internal;
     entry.can_mount = row.kind == "partition" &&
                       !is_protected_system_entry &&
                       !row.filesystem.empty();
@@ -945,8 +882,7 @@ std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
                                     ? row.size_bytes - last_end
                                     : 0;
       entry.can_create_partition =
-          entry.unallocated_bytes >= 1024ULL * 1024ULL * 1024ULL &&
-          (card_identity.empty() || card_identity != g_scanning_card);
+          entry.unallocated_bytes >= 1024ULL * 1024ULL * 1024ULL;
       // Shrinking a mounted root filesystem is not safe. This remains false
       // until an offline, reboot-assisted implementation is available.
       entry.can_resize_partition = false;

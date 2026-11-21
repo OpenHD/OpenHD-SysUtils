@@ -37,8 +37,6 @@ struct StorageEntry {
 };
 
 bool uses_recording_sd_policy();
-void prepare_recording_sd();
-void stop_recording_sd_probe();
 
 // Returns mutation-safe recording targets. Protected system entries are omitted.
 std::vector<StorageEntry> list_safe_storage();

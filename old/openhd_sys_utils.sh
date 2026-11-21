@@ -43,7 +43,6 @@ if [[ "$(lsb_release -cs)" == "noble" ]]; then
   if [ -f "/opt/setup" ]; then
   depmod -a
   rm /opt/setup
-  sudo bash /usr/local/bin/openhd_resize_util.sh 404f7966-7c54-4170-8523-ed6a2a8da9bd 3
   reboot
   fi
 fi

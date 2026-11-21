@@ -587,32 +587,9 @@ bool resize_partition() {
   return true;
 }
 
-bool resize_partition_firstboot() {
-  // Full ORQA images already contain a formatted recordings filesystem which
-  // systemd mounts before SysUtils. Never attempt to format that live volume.
-  if (is_mountpoint("/Video") || is_mountpoint("/Videos")) {
-    set_status("partitioning", "Already mounted",
-               "Preserving the existing mounted recordings filesystem.");
-    return false;
-  }
-  set_status("partitioning", "Checking", "Evaluating partition resize.");
-  const auto candidate = find_resize_candidate(read_lsblk_rows());
-  if (!candidate) {
-    set_status("partitioning", "Not resizable",
-               "No FAT32 partition with free space.");
-    return false;
-  }
-  set_status("partitioning", "Resize requested",
-             "Preparing to resize FAT32 partition.");
-  if (!resize_fat32_partition(*candidate, false)) {
-    set_status("partitioning", "Resize failed",
-               "Partition resize did not complete.");
-    return false;
-  }
-  return true;
-}
-
 std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) {
+  // Never infer partition geometry or select configuration/unknown storage.
+  if (!result.has_start || !result.has_parent) return std::nullopt;
   const auto& rows = result.rows;
   std::optional<ResizeCandidate> best;
 
@@ -661,8 +638,8 @@ std::optional<ResizeCandidate> find_resize_candidate(const LsblkResult& result) 
     for (std::size_t i = 0; i < parts.size(); ++i) {
       const auto& part = parts[i];
       const bool is_last = (i + 1 == parts.size());
-      const bool is_unformatted = part.fstype.empty();
-      if (!is_fat32(part.fstype) && !(is_last && is_unformatted)) {
+      if (!is_last || !is_fat32(part.fstype) ||
+          !is_label(part.label, "recordings") || !part.mountpoint.empty()) {
         continue;
       }
       long long end = part.start_bytes + part.size_bytes;
@@ -792,6 +769,13 @@ void mount_known_partitions() {
 }
 
 bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
+  const auto current = find_resize_candidate(read_lsblk_rows());
+  if (!current || current->device != candidate.device ||
+      current->start_bytes != candidate.start_bytes ||
+      current->size_bytes != candidate.size_bytes) {
+    set_status("partitioning", "Unsafe target", "Recording partition changed or is mounted.");
+    return false;
+  }
   const std::string partition_device = candidate.device;
   auto base_device_opt = base_device_for_partition(partition_device);
   if (!base_device_opt) {
@@ -814,11 +798,6 @@ bool resize_fat32_partition(const ResizeCandidate& candidate, bool reboot) {
   ScopedStartupHold hold("/run/openhd/hold.pid");
   if (!hold.acquired()) {
     set_status("partitioning", "Busy", "Another operation is holding OpenHD startup.");
-    return false;
-  }
-
-  set_status("partitioning", "Formatting", "Preparing FAT32 filesystem.");
-  if (!run_shell_command("mkfs.fat -F 32 " + partition_device)) {
     return false;
   }
 
