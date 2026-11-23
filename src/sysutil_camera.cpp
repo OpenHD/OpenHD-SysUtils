@@ -50,6 +50,8 @@ struct CameraProfile {
   const char* rock_ident = nullptr;
 };
 
+constexpr int kZero3wImx415 = 114;
+
 const std::vector<CameraProfile> kProfiles = {
     {20, "fkms", nullptr, false, nullptr},
     {30, "kms", "ov5647", false, nullptr},
@@ -89,7 +91,12 @@ const std::vector<CameraProfile> kProfiles = {
     {98, nullptr, nullptr, false, "imx462-pivariety"},
     {99, nullptr, nullptr, false, "tc358743-4-lane"},
     {100, nullptr, nullptr, false, "rk628-hdmi-in"},
+    {kZero3wImx415, nullptr, nullptr, false, "imx415"},
 };
+
+bool is_rock3_overlay_camera(int id) {
+  return (id >= 90 && id <= 100) || id == kZero3wImx415;
+}
 
 std::optional<CameraProfile> find_profile(int id) {
   auto it = std::find_if(kProfiles.begin(), kProfiles.end(),
@@ -334,9 +341,11 @@ bool apply_rock3_camera(int platform, int camera) {
   const std::string prefix = rock3ab ? "rock-3ab-" : rock3c ? "rock-3c-" :
                              cm3 ? "radxa-cm3-" : "radxa-zero3-";
   std::string overlay;
-  if (profile && profile->id >= 90 && profile->id <= 100 && profile->rock_ident) {
+  if (profile && is_rock3_overlay_camera(camera) && profile->rock_ident) {
     if (((rock3ab || rock3c) && camera == 99) ||
-        ((rock3ab || cm3) && camera == 100)) {
+        ((rock3ab || cm3) && camera == 100) ||
+        (camera == kZero3wImx415 &&
+         platform != X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W)) {
       std::cerr << "Camera profile " << camera << " is unavailable on this board\n";
       return false;
     }
@@ -372,7 +381,7 @@ bool apply_rock3_camera(int platform, int camera) {
                                boot / "radxa-zero3-tc358743.dtbo"};
   if (!overlay.empty()) active.push_back(boot / overlay);
   for (const auto& entry : kProfiles) {
-    if (entry.id >= 90 && entry.id <= 100 && entry.rock_ident) {
+    if (is_rock3_overlay_camera(entry.id) && entry.rock_ident) {
       // Earlier images used the Zero 3W prefix even on the CM3.
       active.push_back(boot / ("radxa-zero3-" + std::string(entry.rock_ident) + ".dtbo"));
       if (cm3 || rock3ab || rock3c)
