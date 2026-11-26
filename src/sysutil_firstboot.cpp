@@ -36,7 +36,6 @@
 #include "sysutil_part.h"
 #include "sysutil_platform.h"
 #include "sysutil_protocol.h"
-#include "sysutil_settings.h"
 #include "sysutil_status.h"
 
 namespace sysutil {
@@ -125,28 +124,21 @@ std::string detect_shell() {
 }  // namespace
 
 // Performs one-time detection and persists results.
-void run_firstboot_tasks() {
+FirstBootResult run_firstboot_tasks() {
   SysutilConfig config;
   const auto load_result = load_sysutil_config(config);
   if (load_result == ConfigLoadResult::Error) {
-    return;
+    return FirstBootResult::Failed;
   }
 
   const bool should_run =
       (load_result == ConfigLoadResult::NotFound) ||
       !config.firstboot.has_value() || *config.firstboot;
   if (!should_run) {
-    return;
+    return FirstBootResult::Ready;
   }
 
   bool needs_reboot = false;
-  sync_settings_from_files();
-  {
-    SysutilConfig refreshed;
-    if (load_sysutil_config(refreshed) == ConfigLoadResult::Loaded) {
-      config = refreshed;
-    }
-  }
   const auto info = discover_platform_info();
   if (info.platform_type == X_PLATFORM_TYPE_ORQA) {
     detect_orqa_cameras(config);
@@ -156,7 +148,7 @@ void run_firstboot_tasks() {
     if (!config.camera_resolution_fps.has_value()) {
       config.camera_resolution_fps = kOrqaRekindleResolution;
     }
-    (void)write_sysutil_config(config);
+    if (!write_sysutil_config(config)) return FirstBootResult::Failed;
   }
   if (apply_camera_config_if_needed()) {
     needs_reboot = true;
@@ -170,13 +162,15 @@ void run_firstboot_tasks() {
   config.init_system = detect_init_system();
   config.shell = detect_shell();
   config.firstboot = false;
-  (void)write_sysutil_config(config);
+  if (!write_sysutil_config(config)) return FirstBootResult::Failed;
 
   if (needs_reboot) {
     set_status("reboot", "Reboot initiated",
                "Rebooting after first boot tasks.");
-    std::system("reboot");
+    if (std::system("reboot") == 0) return FirstBootResult::Rebooting;
+    std::cerr << "Could not reboot after applying first-boot settings\n";
   }
+  return FirstBootResult::Ready;
 }
 
 }  // namespace sysutil

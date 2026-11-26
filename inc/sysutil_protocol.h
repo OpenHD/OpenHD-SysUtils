@@ -38,6 +38,8 @@ std::optional<int> extract_int_field(const std::string& line,
 // Extracts a boolean field value from a JSON-like payload.
 std::optional<bool> extract_bool_field(const std::string& line,
                                        const std::string& field);
+std::optional<std::string> extract_object_field(const std::string& line,
+                                                const std::string& field);
 
 }  // namespace sysutil
 

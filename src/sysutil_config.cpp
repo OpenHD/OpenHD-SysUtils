@@ -28,6 +28,7 @@
 #include <mutex>
 #include <sstream>
 
+#include "sysutil_atomic_file.h"
 #include "sysutil_protocol.h"
 
 namespace sysutil {
@@ -200,10 +201,7 @@ bool write_sysutil_config(const SysutilConfig& config) {
     return false;
   }
 
-  std::ofstream file(kConfigPath);
-  if (!file) {
-    return false;
-  }
+  std::ostringstream file;
 
   file << "{\n";
   bool wrote_field = false;
@@ -295,8 +293,7 @@ bool write_sysutil_config(const SysutilConfig& config) {
   write_bool("disable_openhd_service", config.disable_openhd_service);
 
   file << "\n}\n";
-  file.close();
-  if (!file) return false;
+  if (!atomic_write(kConfigPath, file.str())) return false;
   cached_config = config;
   cached_result = ConfigLoadResult::Loaded;
   return true;

@@ -164,4 +164,31 @@ std::optional<bool> extract_bool_field(const std::string& line,
   return std::nullopt;
 }
 
+std::optional<std::string> extract_object_field(const std::string& line,
+                                                const std::string& field) {
+  const auto key = find_field_key(line, field);
+  if (key == std::string::npos) return std::nullopt;
+  const auto colon = skip_ws(line, key + field.size() + 2);
+  if (colon == line.size() || line[colon] != ':') return std::nullopt;
+  const auto start = skip_ws(line, colon + 1);
+  if (start == line.size() || line[start] != '{') return std::nullopt;
+
+  int depth = 0;
+  bool in_string = false;
+  for (auto pos = start; pos < line.size(); ++pos) {
+    const char ch = line[pos];
+    if (in_string) {
+      if (ch == '\\') ++pos;
+      else if (ch == '"') in_string = false;
+    } else if (ch == '"') {
+      in_string = true;
+    } else if (ch == '{') {
+      ++depth;
+    } else if (ch == '}' && --depth == 0) {
+      return line.substr(start, pos - start + 1);
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace sysutil

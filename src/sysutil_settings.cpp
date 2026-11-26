@@ -36,6 +36,7 @@
 #include <vector>
 #include <sys/stat.h>
 
+#include "sysutil_atomic_file.h"
 #include "sysutil_camera.h"
 #include "sysutil_config.h"
 #include "sysutil_debug.h"
@@ -57,6 +58,8 @@ constexpr const char* kGroundFile = "/Config/openhd/ground.txt";
 constexpr const char* kRecordFile = "/Config/openhd/record.txt";
 constexpr const char* kSettingsJson = "/Config/settings.json";
 constexpr const char* kSettingsJsonSub = "/Config/openhd/settings.json";
+constexpr const char* kInitialParameterSettings =
+    "/usr/local/share/OpenHD/SysUtils/initial-parameter-settings.json";
 constexpr const char* kQOpenHdSettings = "/root/.config/OpenHD/QOpenHD.conf";
 constexpr const char* kFleetControlCredentials =
     "/root/.config/OpenHD/FleetControlCredentials.json";
@@ -79,13 +82,6 @@ constexpr int kUsbGenericCameraType = 10;
 bool file_exists(const char* path) {
   std::error_code ec;
   return std::filesystem::exists(path, ec);
-}
-
-void remove_file_if_exists(const char* path) {
-  std::error_code ec;
-  if (std::filesystem::exists(path, ec)) {
-    (void)std::filesystem::remove(path, ec);
-  }
 }
 
 std::string normalize_run_mode(std::string mode) {
@@ -257,14 +253,17 @@ bool write_fleetcontrol_credentials(const std::string& username,
 
 }  // namespace
 
-void sync_settings_from_files() {
+bool sync_settings_from_files() {
   SysutilConfig config;
   const auto load_result = load_sysutil_config(config);
   if (load_result == ConfigLoadResult::Error) {
-    return;
+    return false;
   }
 
   bool changed = false;
+  std::vector<std::string> imported_files;
+  std::optional<std::string> initial_parameters;
+  std::optional<std::string> initial_role;
 
   // Check for settings.json (new format)
   std::string json_path;
@@ -275,11 +274,12 @@ void sync_settings_from_files() {
   }
 
   if (!json_path.empty()) {
-    std::ifstream file(json_path);
-    if (file) {
+    if (std::ifstream file(json_path); file) {
       std::ostringstream buffer;
       buffer << file.rdbuf();
+      if (file.bad() || buffer.bad()) return false;
       const std::string content = buffer.str();
+      initial_parameters = extract_object_field(content, "parameter_defaults");
 
       // Parse camera fields (supports int or string)
       auto parse_camera_field = [&](const char* key, std::optional<int>& out) {
@@ -374,6 +374,7 @@ void sync_settings_from_files() {
       if (role) {
         const auto mode = normalize_run_mode(*role);
         if (!mode.empty()) {
+          initial_role = mode;
           config.run_mode = mode;
           changed = true;
         }
@@ -403,13 +404,16 @@ void sync_settings_from_files() {
       }
 
       // sbc field is currently ignored as platform detection handles it.
+    } else {
+      std::cerr << "Could not read boot settings from " << json_path << '\n';
+      return false;
     }
-    remove_file_if_exists(json_path.c_str());
+    imported_files.push_back(json_path);
   }
 
   if (file_exists(kResetFile)) {
     config.reset_requested = true;
-    remove_file_if_exists(kResetFile);
+    imported_files.push_back(kResetFile);
     changed = true;
   }
 
@@ -422,9 +426,9 @@ void sync_settings_from_files() {
     } else {
       config.run_mode = has_air && !has_ground ? "air" : "ground";
     }
-    remove_file_if_exists(kRecordFile);
-    remove_file_if_exists(kAirFile);
-    remove_file_if_exists(kGroundFile);
+    if (has_record) imported_files.push_back(kRecordFile);
+    if (has_air) imported_files.push_back(kAirFile);
+    if (has_ground) imported_files.push_back(kGroundFile);
     changed = true;
   }
 
@@ -437,9 +441,33 @@ void sync_settings_from_files() {
     changed = apply_pico_defaults(config) || changed;
   }
 
-  if (changed) {
-    (void)write_sysutil_config(config);
+  if (changed && !write_sysutil_config(config)) return false;
+
+  // OpenHD registers its parameter owners after SysUtils is ready. Keep
+  // the plan on disk so it also survives a first-boot camera overlay reboot.
+  if (initial_parameters) {
+    const std::filesystem::path path(kInitialParameterSettings);
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    const auto role = initial_role.value_or(config.run_mode.value_or("ground"));
+    const auto plan = "{\"role\":\"" + json_escape(role) +
+                      "\",\"parameter_defaults\":" + *initial_parameters + "}\n";
+    if (ec || !atomic_write(path, plan)) {
+      std::cerr << "Could not persist the initial OpenHD parameter plan\n";
+      return false;
+    }
   }
+
+  for (const auto& path : imported_files) {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    if (ec) {
+      std::cerr << "Could not remove imported boot settings from " << path
+                << ": " << ec.message() << '\n';
+      return false;
+    }
+  }
+  return true;
 }
 
 bool is_settings_request(const std::string& line) {

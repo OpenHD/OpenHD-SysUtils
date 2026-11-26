@@ -29,7 +29,7 @@
 namespace sysutil {
 
 // Consumes boot-time marker files and persists them in sysutils config.
-void sync_settings_from_files();
+bool sync_settings_from_files();
 
 // True when the payload requests sysutils settings.
 bool is_settings_request(const std::string& line);

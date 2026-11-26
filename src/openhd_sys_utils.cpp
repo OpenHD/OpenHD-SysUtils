@@ -438,8 +438,16 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to import ImageWriter configuration; services were not started." << std::endl;
         return 1;
     }
-    sysutil::run_firstboot_tasks();
-    sysutil::sync_settings_from_files();
+    if (!sysutil::sync_settings_from_files()) {
+        std::cerr << "Could not persist boot settings; retrying on the next start." << std::endl;
+        return 1;
+    }
+    const auto first_boot = sysutil::run_firstboot_tasks();
+    if (first_boot == sysutil::FirstBootResult::Rebooting) return 0;
+    if (first_boot == sysutil::FirstBootResult::Failed) {
+        std::cerr << "Could not persist first-boot settings." << std::endl;
+        return 1;
+    }
     if (!sysutil::configure_pico_usb()) return 1;
     const auto lte = sysutil::initialize_lte_link();
     if (lte.configured && !lte.active) {

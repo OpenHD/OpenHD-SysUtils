@@ -26,8 +26,10 @@
 
 namespace sysutil {
 
+enum class FirstBootResult { Ready, Rebooting, Failed };
+
 // Runs one-time sysutils tasks when firstboot is true or missing.
-void run_firstboot_tasks();
+FirstBootResult run_firstboot_tasks();
 
 }  // namespace sysutil
 
