@@ -74,7 +74,7 @@ bool resize_partition();
 
 // Mount known OpenHD partitions (RECORDINGS -> /Video, OPENHD -> /Config).
 // Also exposes legacy /config and /conf aliases when /Config is mounted.
-void mount_known_partitions();
+bool mount_known_partitions();
 
 // Builds a JSON response with the current partition layout.
 std::string build_partitions_response();

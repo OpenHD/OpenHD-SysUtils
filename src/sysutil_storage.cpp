@@ -41,6 +41,12 @@ namespace {
 
 constexpr const char* kVideoMountPoint = "/Video";
 constexpr const char* kRecordingsLabel = "RECORDINGS";
+
+bool has_label(std::string label, const char* expected) {
+  std::transform(label.begin(), label.end(), label.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+  return label == expected;
+}
 constexpr std::uint64_t kMigrationReserveBytes = 64ULL * 1024ULL * 1024ULL;
 constexpr const char* kRecordingUuidPath =
     "/usr/local/share/OpenHD/SysUtils/recording_uuid";
@@ -361,7 +367,7 @@ std::optional<StorageEntry> snapshot_entry(const int id) {
     const auto current = list_safe_storage();
     for (auto entry : current) {
       if (entry.kind == "partition" &&
-          (entry.mounted_at_video || entry.label == kRecordingsLabel)) {
+          (entry.mounted_at_video || has_label(entry.label, kRecordingsLabel))) {
         entry.id = 1;
         return entry;
       }
@@ -855,9 +861,9 @@ std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
                               !external_video_mounted);
     const bool is_recording_partition =
         row.kind == "partition" &&
-        (row.label == kRecordingsLabel || row.mountpoint == kVideoMountPoint);
+        (has_label(row.label, kRecordingsLabel) || row.mountpoint == kVideoMountPoint);
     const bool is_protected_system_entry =
-        is_internal && !is_recording_partition;
+        (is_internal && !is_recording_partition) || has_label(row.label, "OPENHD");
     entry.can_format = row.kind == "partition" &&
                        !is_protected_system_entry;
     entry.can_repartition = row.kind == "disk" && !is_internal;
@@ -892,7 +898,7 @@ std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
           row.mountpoint.empty() &&
           std::none_of(rows.begin(), rows.end(), [&](const BlockRow& child) {
             return canonical_device(child.parent_device) == disk &&
-                (child.label == kRecordingsLabel || !child.mountpoint.empty());
+                (has_label(child.label, kRecordingsLabel) || !child.mountpoint.empty());
           });
     }
     entries.push_back(std::move(entry));
@@ -905,7 +911,7 @@ std::vector<StorageEntry> list_storage_inventory(bool probe_capacity) {
   std::uint16_t next_id = 2;
   for (auto& entry : entries) {
     if (entry.kind == "partition" &&
-        (entry.mounted_at_video || entry.label == kRecordingsLabel)) {
+        (entry.mounted_at_video || has_label(entry.label, kRecordingsLabel))) {
       entry.id = 1;
       break;
     }

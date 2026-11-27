@@ -433,7 +433,10 @@ int main(int argc, char* argv[]) {
                         "Waiting for OpenHD requests.");
     sysutil::init_platform_info();
     sysutil::start_openhd_glide_early_if_needed();
-    sysutil::mount_known_partitions();
+    if (!sysutil::mount_known_partitions()) {
+        std::cerr << "OpenHD config partition not mounted; retrying startup." << std::endl;
+        return 1;
+    }
     if (!sysutil::import_ubi_provisioning()) {
         std::cerr << "Failed to import ImageWriter configuration; services were not started." << std::endl;
         return 1;

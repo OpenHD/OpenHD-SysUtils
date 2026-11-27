@@ -23,6 +23,8 @@
 
 #include "sysutil_part.h"
 
+#include "platforms_generated.h"
+#include "sysutil_platform.h"
 #include "sysutil_status.h"
 #include "sysutil_storage.h"
 
@@ -469,6 +471,9 @@ bool is_label(const std::string& label, const std::string& expected) {
 }
 
 bool is_mountpoint(const std::string& mountpoint) {
+  std::error_code error;
+  const auto resolved = std::filesystem::canonical(mountpoint, error);
+  if (error) return false;
   std::ifstream mounts("/proc/mounts");
   std::string line;
   while (std::getline(mounts, line)) {
@@ -477,7 +482,7 @@ bool is_mountpoint(const std::string& mountpoint) {
     if (!(iss >> dev >> mnt)) {
       continue;
     }
-    if (mnt == mountpoint) {
+    if (resolved == mnt) {
       return true;
     }
   }
@@ -582,42 +587,86 @@ void ensure_config_aliases() {
   }
 }
 
-void mount_known_partitions() {
+bool mount_known_partitions() {
   const auto result = read_lsblk_rows();
+  const bool zero3w = platform_info().platform_type ==
+                      X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W;
+  std::string boot_disk;
+  for (const auto& row : result.rows) {
+    if (row.type == "part" && row.mountpoint == "/") {
+      boot_disk = row.parent;
+      break;
+    }
+  }
+
+  // Prefer the config partition beside the running rootfs, even if another
+  // OpenHD card is attached. Older Zero 3W images also mount it at /conf.
+  const LsblkRow* config = nullptr;
+  for (const auto& row : result.rows) {
+    if (row.type != "part" || !is_label(row.label, "openhd")) continue;
+    if (!boot_disk.empty() && row.parent == boot_disk) {
+      config = &row;
+      break;
+    }
+    if (config == nullptr && (!zero3w || boot_disk.empty())) config = &row;
+  }
+  if (zero3w && config == nullptr && !boot_disk.empty()) {
+    // Older images can already have the FAT settings partition mounted by
+    // fstab at its legacy location even when its volume label is missing.
+    for (const auto& row : result.rows) {
+      if (row.type == "part" && row.parent == boot_disk && row.fstype == "vfat" &&
+          (row.mountpoint == "/conf" || row.mountpoint == "/config")) {
+        config = &row;
+        break;
+      }
+    }
+  }
+  bool config_mounted = is_mountpoint("/Config");
+  if (!config_mounted && config != nullptr) {
+    config_mounted = mount_partition("/dev/" + config->name, "/Config", false);
+  }
+  if (zero3w && !config_mounted) {
+    set_status("storage.config_missing", "OpenHD settings volume unavailable",
+               "Waiting for the OPENHD partition at /Config.", 2);
+    return false;
+  }
+  ensure_config_aliases();
+
+  // Never stack a second volume on top of a running recorder or an fstab mount.
+  if (is_mountpoint("/Video")) return true;
   const auto safe_storage = list_safe_storage();
   std::set<std::string> safe_devices;
   for (const auto& entry : safe_storage) {
-    safe_devices.insert(entry.device);
+    if (entry.can_mount) safe_devices.insert(entry.device);
   }
   constexpr const char* recording_uuid_path =
       "/usr/local/share/OpenHD/SysUtils/recording_uuid";
   std::ifstream selected_uuid_file(recording_uuid_path);
   std::string selected_uuid;
   std::getline(selected_uuid_file, selected_uuid);
-  bool selected_video_mounted = false;
   if (!selected_uuid.empty()) {
     const auto selected_device = find_device_by_uuid(selected_uuid);
-    if (selected_device && safe_devices.count(*selected_device) != 0) {
-      selected_video_mounted =
-          mount_partition(*selected_device, "/Video", false);
+    if (selected_device && safe_devices.count(*selected_device) != 0 &&
+        mount_partition(*selected_device, "/Video", false)) {
+      return true;
     }
   }
-  for (const auto& row : result.rows) {
-    if (row.type != "part") {
-      continue;
+  // Try the ImageWriter partition on the running disk first, then removable
+  // media. Stop after the first successful mount.
+  const auto mount_recordings = [&](bool on_boot_disk) {
+    for (const auto& row : result.rows) {
+      if (row.type != "part" || !is_label(row.label, "recordings") ||
+          (!boot_disk.empty() && row.parent == boot_disk) != on_boot_disk) {
+        continue;
+      }
+      const auto device = "/dev/" + row.name;
+      if (safe_devices.count(device) != 0 &&
+          mount_partition(device, "/Video", false)) return true;
     }
-    const std::string device = "/dev/" + row.name;
-    if (is_label(row.label, "openhd")) {
-      // /Config commonly lives on the boot/root disk. It stays hidden from
-      // storage management, but must still be mounted during startup.
-      (void)mount_partition(device, "/Config", false);
-    } else if (safe_devices.count(device) != 0 &&
-               is_label(row.label, "recordings") &&
-               !selected_video_mounted) {
-      (void)mount_partition(device, "/Video", false);
-    }
-  }
-  ensure_config_aliases();
+    return false;
+  };
+  if (!mount_recordings(true)) (void)mount_recordings(false);
+  return true;
 }
 
 std::string build_partitions_response() {
