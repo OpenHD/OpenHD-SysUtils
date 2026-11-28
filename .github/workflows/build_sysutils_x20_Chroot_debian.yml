@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "main"
+      - "master"
       - "dev-release"
-      - "release"
+      - "master"
       - "openhd-3.0"
 
 jobs:

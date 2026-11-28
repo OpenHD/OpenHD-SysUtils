@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "main"
+      - "master"
       - "dev-release"
-      - "release"
+      - "master"
       - "openhd-3.0"
 
 jobs:
@@ -129,7 +129,7 @@ jobs:
             *.deb
 
       - name: Push
-        if: github.ref_name == 'release' || github.ref_name == 'dev-release' || github.ref_name == 'main'
+        if: github.ref_name == 'release' || github.ref_name == 'dev-release' || github.ref_name == 'master'
         uses: cloudsmith-io/action@master
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
