@@ -5,11 +5,12 @@ on:
   push:
     branches:
       - "main"
-      - "dev-release"
-      - "release"
+      - "snapshots"
+      - "master"
       - "openhd-3.0"
 
 env:
+  OPENHD_SNAPSHOT_NUMBER: ${{ github.ref_name == 'snapshots' && github.run_number || '' }}
   BUILD_TYPE: Release
 
 jobs:

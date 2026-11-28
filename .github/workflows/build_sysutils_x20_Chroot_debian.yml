@@ -5,9 +5,12 @@ on:
   push:
     branches:
       - "main"
-      - "dev-release"
-      - "release"
+      - "snapshots"
+      - "master"
       - "openhd-3.0"
+
+env:
+  OPENHD_SNAPSHOT_NUMBER: ${{ github.ref_name == 'snapshots' && github.run_number || '' }}
 
 jobs:
   build:
@@ -41,10 +44,12 @@ jobs:
           echo "armhf" > /opt/OpenHD-ChrootCompiler/additionalFiles/arch.txt
           echo "debian" > /opt/OpenHD-ChrootCompiler/additionalFiles/distro.txt
           echo "bullseye" > /opt/OpenHD-ChrootCompiler/additionalFiles/flavor.txt
-          echo "${{ github.ref_name }}" > /opt/OpenHD-ChrootCompiler/additionalFiles/repo.txt
+          echo "${{ github.ref_name == 'snapshots' && 'dev-release' || github.ref_name == 'master' && 'release' || github.ref_name }}" > /opt/OpenHD-ChrootCompiler/additionalFiles/repo.txt
+          printf "%s\n" "$OPENHD_SNAPSHOT_NUMBER" > /opt/OpenHD-ChrootCompiler/additionalFiles/snapshot_number.txt
           cat << 'EOF' > /opt/OpenHD-ChrootCompiler/additionalFiles/build_chroot.sh
           #!/bin/bash
           set -euo pipefail
+          export OPENHD_SNAPSHOT_NUMBER="$(cat snapshot_number.txt)"
           chmod 1777 /tmp || true
           apt-get update --fix-missing
           apt-get install -y cmake g++ python3
@@ -86,7 +91,7 @@ jobs:
             *.deb
 
       - name: Push
-        if: github.ref_name == 'release' || github.ref_name == 'dev-release'
+        if: github.ref_name == 'master' || github.ref_name == 'snapshots'
         uses: cloudsmith-io/action@master
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}

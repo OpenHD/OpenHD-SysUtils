@@ -10,6 +10,14 @@ if(NOT DEFINED BASE_VERSION)
     message(FATAL_ERROR "BASE_VERSION is not set")
 endif()
 
+if("$ENV{OPENHD_SNAPSHOT_NUMBER}" MATCHES "^[1-9][0-9]*$")
+    set(_openhd_snapshot_version "0.0.$ENV{OPENHD_SNAPSHOT_NUMBER}")
+    file(WRITE "${VERSION_FILE}" "${_openhd_snapshot_version}\n")
+    file(WRITE "${OUTPUT_HEADER}"
+        "#pragma once\n#define OPENHD_SYS_UTILS_VERSION \"${_openhd_snapshot_version}\"\n")
+    return()
+endif()
+
 set(_openhd_build_ver "")
 
 if(DEFINED ENV{OPENHD_BUILD_NUMBER} AND NOT "$ENV{OPENHD_BUILD_NUMBER}" STREQUAL "")
@@ -23,6 +31,9 @@ elseif(DEFINED ENV{BUILD_NUMBER} AND NOT "$ENV{BUILD_NUMBER}" STREQUAL "")
 elseif(EXISTS "${VERSION_FILE}")
     file(READ "${VERSION_FILE}" _openhd_build_ver)
     string(STRIP "${_openhd_build_ver}" _openhd_build_ver)
+    if(NOT _openhd_build_ver MATCHES "^[0-9]+$")
+        set(_openhd_build_ver "")
+    endif()
 endif()
 
 if(NOT _openhd_build_ver)

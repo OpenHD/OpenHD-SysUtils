@@ -5,11 +5,12 @@ on:
   push:
     branches:
       - "main"
-      - "dev-release"
-      - "release"
+      - "snapshots"
+      - "master"
       - "openhd-3.0"
 
 env:
+  OPENHD_SNAPSHOT_NUMBER: ${{ github.ref_name == 'snapshots' && github.run_number || '' }}
   BUILD_TYPE: Release
 
 jobs:
@@ -51,7 +52,7 @@ jobs:
           if-no-files-found: error
 
       - name: Push to Cloudsmith
-        if: github.ref_name == 'release' || github.ref_name == 'dev-release' || github.ref_name == 'main'
+        if: github.ref_name == 'master' || github.ref_name == 'snapshots' || github.ref_name == 'main'
         run: |
           pip install cloudsmith-cli --break-system-packages
           cloudsmith push deb -k ${{ secrets.CLOUDSMITH_API_KEY }} openhd/dev-release/ubuntu/lunar OpenHD-SysUtils/build/*.deb

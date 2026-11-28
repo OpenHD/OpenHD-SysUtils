@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - dev-release
+      - snapshots
     paths:
       - CMakeLists.txt
       - inc/**
@@ -22,6 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  OPENHD_SNAPSHOT_NUMBER: ${{ github.ref_name == 'snapshots' && github.run_number || '' }}
   X21_INPUT_BASE_URL: https://dl.cloudsmith.io/public/openhd/dev-release/raw/files
 
 jobs:

@@ -5,9 +5,12 @@ on:
   push:
     branches:
       - "main"
-      - "dev-release"
-      - "release"
+      - "snapshots"
+      - "master"
       - "openhd-3.0"
+
+env:
+  OPENHD_SNAPSHOT_NUMBER: ${{ github.ref_name == 'snapshots' && github.run_number || '' }}
 
 jobs:
   build:
@@ -62,7 +65,7 @@ jobs:
             *.deb
 
       - name: Push
-        if: github.ref_name == 'release' || github.ref_name == 'dev-release' || github.ref_name == 'main'
+        if: github.ref_name == 'master' || github.ref_name == 'snapshots' || github.ref_name == 'main'
         uses: cloudsmith-io/action@master
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
