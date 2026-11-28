@@ -10,6 +10,14 @@ endif()
 if(_openhd_build_ver MATCHES "^0\\.0\\.[1-9][0-9]*$")
     set(CPACK_PACKAGE_VERSION "${_openhd_build_ver}")
     set(CPACK_DEBIAN_PACKAGE_EPOCH 1)
+    set(_openhd_arch "${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+    if(NOT _openhd_arch)
+        execute_process(COMMAND dpkg --print-architecture
+            OUTPUT_VARIABLE _openhd_arch OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND_ERROR_IS_FATAL ANY)
+    endif()
+    set(CPACK_DEBIAN_FILE_NAME
+        "${CPACK_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}_${_openhd_arch}.deb")
 else()
     set(CPACK_PACKAGE_VERSION "@PROJECT_VERSION@.${_openhd_build_ver}")
 endif()
