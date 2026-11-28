@@ -43,7 +43,7 @@ bash "${repo_root}/scripts/build_usb_modeswitch.sh" \
 component_version="$(sed -nE 's/^project\(openhd_sys_utils VERSION ([^ ]+).*/\1/p' "${repo_root}/CMakeLists.txt")"
 test -n "${component_version}"
 if [[ ${OPENHD_SNAPSHOT_NUMBER:-} =~ ^[1-9][0-9]*$ ]]; then
-  component_version="0.0.${OPENHD_SNAPSHOT_NUMBER}"
+  component_version="4.2.${OPENHD_SNAPSHOT_NUMBER}"
 fi
 source_commit="$(git -C "${repo_root}" rev-parse HEAD)"
 package_version="${component_version}-${source_commit:0:12}"

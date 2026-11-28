@@ -11,7 +11,7 @@ if(NOT DEFINED BASE_VERSION)
 endif()
 
 if("$ENV{OPENHD_SNAPSHOT_NUMBER}" MATCHES "^[1-9][0-9]*$")
-    set(_openhd_snapshot_version "0.0.$ENV{OPENHD_SNAPSHOT_NUMBER}")
+    set(_openhd_snapshot_version "4.2.$ENV{OPENHD_SNAPSHOT_NUMBER}")
     file(WRITE "${VERSION_FILE}" "${_openhd_snapshot_version}\n")
     file(WRITE "${OUTPUT_HEADER}"
         "#pragma once\n#define OPENHD_SYS_UTILS_VERSION \"${_openhd_snapshot_version}\"\n")
