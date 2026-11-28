@@ -27,6 +27,7 @@
 #include <array>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <string>
@@ -80,7 +81,7 @@ constexpr std::array<PlatformUarts, 15> kPlatformUarts{{
     {X_PLATFORM_TYPE_RADXA_CM3_OCHIN,                            "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ROCKCHIP_RK3566_RADXA_ZERO3W,              "Rockchip RK3566",         "/dev/ttyS2",    "/dev/ttyS7",  nullptr},
     {X_PLATFORM_TYPE_ALWINNER_X20,                              "Allwinner X20",           "/dev/ttyS4",    nullptr,        nullptr},
-    {X_PLATFORM_TYPE_LUCKFOX_RV110X,                            "Rockchip RV1103/RV1106",  "/dev/ttyS3",    nullptr,        nullptr},
+    {X_PLATFORM_TYPE_LUCKFOX_RV110X,                            "Rockchip RV1103/RV1106",  "/dev/ttyS1",    nullptr,        nullptr},
     {X_PLATFORM_TYPE_LUCKFOX_LYRA,                              "Rockchip RK3506",         "/dev/ttyS3",    nullptr,        nullptr},
 }};
 // clang-format on
@@ -101,6 +102,21 @@ bool is_existing_serial_device(const std::string& path) {
   }
   return std::filesystem::is_character_file(path, ec) ||
          std::filesystem::is_symlink(path, ec);
+}
+
+bool pico_uart1_available_for_telemetry() {
+  std::error_code ec;
+  if (!is_existing_serial_device("/dev/ttyS1") ||
+      !std::filesystem::exists("/sys/class/tty/ttyS1/device/of_node", ec)) {
+    return false;
+  }
+  // Some Pico device trees route UART1 to the onboard Bluetooth controller.
+  constexpr auto bluetooth = "/proc/device-tree/wireless-bluetooth";
+  if (!std::filesystem::exists(bluetooth, ec)) return !ec;
+  std::ifstream input(std::string(bluetooth) + "/status", std::ios::binary);
+  std::string status;
+  std::getline(input, status, '\0');
+  return status == "disabled";
 }
 
 std::string unique_key_for_path(const std::string& path) {
@@ -169,8 +185,12 @@ std::vector<std::string> known_platform_serials() {
     }
 
     std::vector<std::string> devices;
+    const char* telemetry_uart = entry.telemetry_uart;
+    if (platform == X_PLATFORM_TYPE_LUCKFOX_RV110X &&
+        !pico_uart1_available_for_telemetry())
+      telemetry_uart = "/dev/ttyS3";
     const std::array<const char*, 3> function_devices{{
-        entry.telemetry_uart,
+        telemetry_uart,
         entry.openhd_uart,
         entry.sbus_uart,
     }};
